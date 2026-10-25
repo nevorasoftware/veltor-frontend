@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { SECTIONS, formatUSD, formatDateSV } from '../config/branding';
 import { api } from '../api/client';
-import { formatDUI, formatNIT, isValidDUI, isValidNIT } from '../utils/formatters';
+import { formatDUI, formatNIT, isValidDUI, isValidNIT, compressAndReadFileAsBase64 } from '../utils/formatters';
 
 interface UploadedDocState {
   file: File;
@@ -282,28 +282,21 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
-  // Convertir archivo a base64
-  const readFileAsBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (error) => reject(error);
-      reader.readAsDataURL(file);
-    });
-  };
 
-  // Cargar documento obligatorio
+
+  // Cargar documento obligatorio con optimización de imagen automática
   const handleDocSelect = async (
     category: 'DUI_FRONT' | 'NIT' | 'DRIVER_LICENSE' | 'PAYSLIP' | 'UTILITY_BILL',
     file: File,
   ) => {
     try {
-      const base64 = await readFileAsBase64(file);
+      // Optimiza fotos tomadas con el móvil a resolución HD para evitar 'Request Entity Too Large'
+      const { base64, mimeType } = await compressAndReadFileAsBase64(file);
       const docObj: UploadedDocState = {
         file,
         fileName: file.name,
         fileSize: file.size,
-        mimeType: file.type || 'application/octet-stream',
+        mimeType: mimeType || file.type || 'application/octet-stream',
         base64,
         category,
       };
@@ -948,10 +941,10 @@ export const AdminDashboardPage: React.FC = () => {
                 }`}
               >
                 <ShieldCheck className="w-4 h-4" />
-                <span>2. Formalizar a Crédito Activo (4 Documentos)</span>
-                {uploadedDocsCount === 4 && (
+                <span>2. Formalizar a Crédito Activo (5 Documentos)</span>
+                {uploadedDocsCount === 5 && (
                   <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px]">
-                    4/4
+                    5/5
                   </span>
                 )}
               </button>
@@ -1091,7 +1084,7 @@ export const AdminDashboardPage: React.FC = () => {
               </form>
             )}
 
-            {/* PESTAÑA 2: FORMALIZAR A CRÉDITO ACTIVO (CARGA DE 4 DOCUMENTOS OBLIGATORIOS) */}
+            {/* PESTAÑA 2: FORMALIZAR A CRÉDITO ACTIVO (CARGA DE 5 DOCUMENTOS OBLIGATORIOS) */}
             {leadModalTab === 'convert' && (
               <div className="space-y-6">
                 {conversionSuccessMsg ? (
