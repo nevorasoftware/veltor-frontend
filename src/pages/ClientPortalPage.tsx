@@ -5,8 +5,10 @@ import {
   Download,
   ShieldCheck,
   LogOut,
+  FileText,
 } from 'lucide-react';
 import { SECTIONS, formatUSD, formatDateSV } from '../config/branding';
+import { api } from '../api/client';
 
 export const ClientPortalPage: React.FC = () => {
   const navigate = useNavigate();
@@ -200,13 +202,24 @@ export const ClientPortalPage: React.FC = () => {
             <h3 className="text-lg font-bold text-white">Historial de Movimientos y Pagos</h3>
             <p className="text-xs text-slate-400">Detalle de abonos aplicados con distribución exacta a capital e interés</p>
           </div>
-          <button
-            onClick={() => alert('Descargando estado de cuenta en PDF...')}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition-colors"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Descargar Estado de Cuenta</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => window.open(api.getLoanStatementPdfUrl(loanData.code), '_blank')}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition-colors"
+              title="Descargar Estado de Cuenta oficial en PDF"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-400" />
+              <span>Estado de Cuenta (PDF)</span>
+            </button>
+            <button
+              onClick={() => window.open(api.getLoanSchedulePdfUrl(loanData.code), '_blank')}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition-colors"
+              title="Descargar Tabla de Amortización oficial en PDF"
+            >
+              <FileText className="w-3.5 h-3.5 text-slate-400" />
+              <span>Tabla de Amortización (PDF)</span>
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">

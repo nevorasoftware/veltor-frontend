@@ -102,4 +102,29 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ reason }),
     }),
+
+  // Descargas PDF Oficiales
+  getLoanSchedulePdfUrl: (loanId: string) => `${API_BASE}/finance/loans/${loanId}/schedule.pdf`,
+  getLoanStatementPdfUrl: (loanId: string) => `${API_BASE}/finance/loans/${loanId}/statement.pdf`,
+
+  // Expedientes y Documentos
+  getCustomerDocuments: (customerId: string) => request<any[]>(`/customers/${customerId}/documents`),
+  getDocumentDownloadUrl: (docId: string) => `${API_BASE}/documents/${docId}/download`,
+  uploadCustomerDocument: async (customerId: string, formData: FormData) => {
+    const token = localStorage.getItem('veltor_token');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE}/customers/${customerId}/documents`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Error al subir documento');
+    }
+    return res.json();
+  },
 };
+
