@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { SECTIONS, formatUSD, formatDateSV } from '../config/branding';
 import { api } from '../api/client';
+import { formatDUI, formatNIT, isValidDUI, isValidNIT } from '../utils/formatters';
 
 interface UploadedDocState {
   file: File;
@@ -24,7 +25,7 @@ interface UploadedDocState {
   fileSize: number;
   mimeType: string;
   base64: string;
-  category: 'DUI_FRONT' | 'NIT' | 'DRIVER_LICENSE' | 'PAYSLIP';
+  category: 'DUI_FRONT' | 'NIT' | 'DRIVER_LICENSE' | 'PAYSLIP' | 'UTILITY_BILL';
 }
 
 export const AdminDashboardPage: React.FC = () => {
@@ -72,11 +73,12 @@ export const AdminDashboardPage: React.FC = () => {
   const [leadEconomicActivity, setLeadEconomicActivity] = useState<string>('Empleado / Profesional');
   const [leadMonthlyIncome, setLeadMonthlyIncome] = useState<number>(1800);
 
-  // 4 Documentos obligatorios para activar crédito
+  // 5 Documentos obligatorios para activar crédito
   const [duiDoc, setDuiDoc] = useState<UploadedDocState | null>(null);
   const [nitDoc, setNitDoc] = useState<UploadedDocState | null>(null);
   const [licenseDoc, setLicenseDoc] = useState<UploadedDocState | null>(null);
   const [incomeDoc, setIncomeDoc] = useState<UploadedDocState | null>(null);
+  const [utilityDoc, setUtilityDoc] = useState<UploadedDocState | null>(null);
 
   const [convertingLoading, setConvertingLoading] = useState<boolean>(false);
   const [conversionSuccessMsg, setConversionSuccessMsg] = useState<string | null>(null);
@@ -242,6 +244,7 @@ export const AdminDashboardPage: React.FC = () => {
     setNitDoc(null);
     setLicenseDoc(null);
     setIncomeDoc(null);
+    setUtilityDoc(null);
 
     setLeadSaveSuccess(null);
     setConversionSuccessMsg(null);
@@ -291,7 +294,7 @@ export const AdminDashboardPage: React.FC = () => {
 
   // Cargar documento obligatorio
   const handleDocSelect = async (
-    category: 'DUI_FRONT' | 'NIT' | 'DRIVER_LICENSE' | 'PAYSLIP',
+    category: 'DUI_FRONT' | 'NIT' | 'DRIVER_LICENSE' | 'PAYSLIP' | 'UTILITY_BILL',
     file: File,
   ) => {
     try {
@@ -309,6 +312,7 @@ export const AdminDashboardPage: React.FC = () => {
       else if (category === 'NIT') setNitDoc(docObj);
       else if (category === 'DRIVER_LICENSE') setLicenseDoc(docObj);
       else if (category === 'PAYSLIP') setIncomeDoc(docObj);
+      else if (category === 'UTILITY_BILL') setUtilityDoc(docObj);
 
       setConversionErrorMsg(null);
     } catch (err) {
@@ -316,7 +320,7 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
-  const uploadedDocsCount = [duiDoc, nitDoc, licenseDoc, incomeDoc].filter(Boolean).length;
+  const uploadedDocsCount = [duiDoc, nitDoc, licenseDoc, incomeDoc, utilityDoc].filter(Boolean).length;
 
   // Formalizar Prospecto a Crédito Activo
   const handleFormalizeLead = async () => {
@@ -327,9 +331,21 @@ export const AdminDashboardPage: React.FC = () => {
       return;
     }
 
-    if (!duiDoc || !nitDoc || !licenseDoc || !incomeDoc) {
+    if (!isValidDUI(leadDui)) {
+      setConversionErrorMsg('El DUI debe tener un formato salvadoreño válido (9 dígitos: 00000000-0).');
+      return;
+    }
+
+    if (!isValidNIT(leadNit)) {
       setConversionErrorMsg(
-        'Debes cargar obligatoriamente los 4 documentos del cliente (DUI, NIT, Licencia y Comprobante de Ingresos) para activar el crédito.',
+        'El NIT debe tener un formato salvadoreño válido: homologado a DUI (00000000-0) o tradicional de 14 dígitos (0000-000000-000-0).',
+      );
+      return;
+    }
+
+    if (!duiDoc || !nitDoc || !licenseDoc || !incomeDoc || !utilityDoc) {
+      setConversionErrorMsg(
+        'Debes cargar obligatoriamente los 5 documentos del cliente (DUI, NIT, Licencia, Comprobante de Ingresos y Recibo de Agua o Luz) para activar el crédito.',
       );
       return;
     }
@@ -339,7 +355,7 @@ export const AdminDashboardPage: React.FC = () => {
     setConversionSuccessMsg(null);
 
     try {
-      const documentsPayload = [duiDoc, nitDoc, licenseDoc, incomeDoc].map((d) => ({
+      const documentsPayload = [duiDoc, nitDoc, licenseDoc, incomeDoc, utilityDoc].map((d) => ({
         category: d.category,
         fileName: d.fileName,
         mimeType: d.mimeType,
@@ -1106,7 +1122,7 @@ export const AdminDashboardPage: React.FC = () => {
                         Requisito Obligatorio de Expediente
                       </span>
                       <p className="text-xs text-slate-300">
-                        Para pasar de prospecto a <strong>Crédito Activo</strong> se deben ingresar los datos fiscales y cargar desde tu PC o Móvil los <strong>4 documentos requeridos</strong>: DUI, NIT, Licencia de Conducir y Comprobante de Ingresos.
+                        Para pasar de prospecto a <strong>Crédito Activo</strong> se deben ingresar los datos fiscales y cargar desde tu PC o Móvil los <strong>5 documentos requeridos</strong>: DUI, NIT, Licencia de Conducir, Comprobante de Ingresos y Recibo de Agua o Luz.
                       </p>
                     </div>
 
@@ -1120,26 +1136,52 @@ export const AdminDashboardPage: React.FC = () => {
                     {/* Datos fiscales y contractuales del cliente */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
                       <div>
-                        <label className="block text-slate-300 font-semibold mb-1">DUI del Solicitante *</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-slate-300 font-semibold">DUI del Solicitante *</label>
+                          {leadDui && (
+                            <span
+                              className={`text-[10px] font-bold ${
+                                isValidDUI(leadDui) ? 'text-emerald-400' : 'text-amber-400'
+                              }`}
+                            >
+                              {isValidDUI(leadDui) ? '✓ Válido' : 'Formato incompleto'}
+                            </span>
+                          )}
+                        </div>
                         <input
                           type="text"
                           required
+                          maxLength={10}
                           value={leadDui}
-                          onChange={(e) => setLeadDui(e.target.value)}
+                          onChange={(e) => setLeadDui(formatDUI(e.target.value))}
                           placeholder="00000000-0"
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono outline-none focus:border-white"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono outline-none focus:border-white transition-all"
                         />
+                        <p className="text-[10px] text-slate-400 mt-1">Formato: 00000000-0 (8 dígitos y 1 de control)</p>
                       </div>
                       <div>
-                        <label className="block text-slate-300 font-semibold mb-1">NIT del Solicitante *</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-slate-300 font-semibold">NIT del Solicitante *</label>
+                          {leadNit && (
+                            <span
+                              className={`text-[10px] font-bold ${
+                                isValidNIT(leadNit) ? 'text-emerald-400' : 'text-amber-400'
+                              }`}
+                            >
+                              {isValidNIT(leadNit) ? '✓ Válido' : 'Formato incompleto'}
+                            </span>
+                          )}
+                        </div>
                         <input
                           type="text"
                           required
+                          maxLength={17}
                           value={leadNit}
-                          onChange={(e) => setLeadNit(e.target.value)}
-                          placeholder="0000-000000-000-0"
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono outline-none focus:border-white"
+                          onChange={(e) => setLeadNit(formatNIT(e.target.value))}
+                          placeholder="00000000-0 o 0000-000000-000-0"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono outline-none focus:border-white transition-all"
                         />
+                        <p className="text-[10px] text-slate-400 mt-1">Homologado (9 dígitos) o tradicional (14 dígitos)</p>
                       </div>
                       <div>
                         <label className="block text-slate-300 font-semibold mb-1">Ingresos Mensuales Declarados ($) *</label>
@@ -1174,7 +1216,7 @@ export const AdminDashboardPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* PARTE DE CARGA DE LOS 4 DOCUMENTOS OBLIGATORIOS (PC Y MÓVIL) */}
+                    {/* PARTE DE CARGA DE LOS 5 DOCUMENTOS OBLIGATORIOS (PC Y MÓVIL) */}
                     <div className="space-y-3 pt-2">
                       <div className="flex items-center justify-between">
                         <h4 className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-2">
@@ -1183,12 +1225,12 @@ export const AdminDashboardPage: React.FC = () => {
                         </h4>
                         <span
                           className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                            uploadedDocsCount === 4
+                            uploadedDocsCount === 5
                               ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                               : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
                           }`}
                         >
-                          {uploadedDocsCount} de 4 Documentos Cargados
+                          {uploadedDocsCount} de 5 Documentos Cargados
                         </span>
                       </div>
 
@@ -1452,6 +1494,71 @@ export const AdminDashboardPage: React.FC = () => {
                             )}
                           </div>
                         </div>
+
+                        {/* 5. RECIBO DE AGUA O LUZ */}
+                        <div
+                          className={`p-4 rounded-2xl border transition-all sm:col-span-2 ${
+                            utilityDoc
+                              ? 'bg-emerald-950/20 border-emerald-500/40'
+                              : 'bg-slate-800/40 border-slate-700 hover:border-slate-600'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="flex items-center gap-1.5 font-bold text-xs text-white">
+                                <span>5. Recibo de Agua o Luz (Comprobante de Domicilio)</span>
+                                <span className="text-rose-400">*</span>
+                              </div>
+                              <p className="text-[11px] text-slate-400 mt-0.5">
+                                Factura reciente de energía eléctrica (CAESS, DELSUR, etc.) o agua (ANDA), vigencia no mayor a 3 meses
+                              </p>
+                            </div>
+                            {utilityDoc ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-400 flex items-center gap-1">
+                                <Check className="w-3 h-3" />
+                                <span>Cargado</span>
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-500/20 text-amber-400">
+                                Requerido
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mt-3">
+                            <input
+                              type="file"
+                              id="doc-utility-file"
+                              accept="image/*,application/pdf"
+                              capture="environment"
+                              className="hidden"
+                              onChange={(e) => {
+                                if (e.target.files?.[0]) handleDocSelect('UTILITY_BILL', e.target.files[0]);
+                              }}
+                            />
+                            {utilityDoc ? (
+                              <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900 border border-emerald-500/30 text-xs">
+                                <span className="font-mono text-emerald-300 truncate max-w-[280px]">
+                                  {utilityDoc.fileName}
+                                </span>
+                                <label
+                                  htmlFor="doc-utility-file"
+                                  className="text-[11px] text-slate-400 hover:text-white underline cursor-pointer ml-2"
+                                >
+                                  Cambiar
+                                </label>
+                              </div>
+                            ) : (
+                              <label
+                                htmlFor="doc-utility-file"
+                                className="w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-dashed border-slate-600 hover:border-slate-400 text-xs text-slate-300 hover:text-white flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                              >
+                                <Camera className="w-3.5 h-3.5 text-slate-400" />
+                                <span>Subir archivo o tomar foto del recibo</span>
+                              </label>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -1460,7 +1567,7 @@ export const AdminDashboardPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={handleFormalizeLead}
-                        disabled={uploadedDocsCount < 4 || !leadDui || !leadNit || convertingLoading}
+                        disabled={uploadedDocsCount < 5 || !leadDui || !leadNit || convertingLoading}
                         className="w-full py-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         {convertingLoading ? (
@@ -1469,9 +1576,9 @@ export const AdminDashboardPage: React.FC = () => {
                           <>
                             <ShieldCheck className="w-4 h-4" />
                             <span>
-                              {uploadedDocsCount === 4
+                              {uploadedDocsCount === 5
                                 ? 'Formalizar y Activar Crédito Ahora'
-                                : `Faltan ${4 - uploadedDocsCount} documento(s) para poder formalizar`}
+                                : `Faltan ${5 - uploadedDocsCount} documento(s) para poder formalizar`}
                             </span>
                           </>
                         )}
