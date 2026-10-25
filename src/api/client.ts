@@ -126,5 +126,13 @@ export const api = {
     }
     return res.json();
   },
+
+  // Parámetros y Configuración
+  getPublicSettings: () => request<any>('/settings/public'),
+  updatePreferentialRate: (monthlyRate: number) =>
+    request<any>('/settings/preferential-rate', {
+      method: 'PATCH',
+      body: JSON.stringify({ monthlyRate }),
+    }),
 };
 

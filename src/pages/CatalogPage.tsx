@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Car, ArrowRight, Check } from 'lucide-react';
+import { Search, Car, Check } from 'lucide-react';
 import { LeadModal } from '../components/LeadModal';
 import { FinancingSimulator } from '../components/FinancingSimulator';
 import { SECTIONS, formatUSD } from '../config/branding';
@@ -306,19 +306,19 @@ export const CatalogPage: React.FC = () => {
 
       {/* Modal de Detalle de Vehículo y Ficha Técnica */}
       {detailVehicle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
-          <div className="relative w-full max-w-4xl glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-6 sm:p-8 shadow-2xl my-8">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
+          <div className="relative w-full max-w-6xl glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-5 sm:p-8 shadow-2xl my-6">
             <button
               onClick={() => setDetailVehicle(null)}
-              className="absolute top-6 right-6 p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800 border border-slate-700"
+              className="absolute top-5 right-5 z-10 p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800 border border-slate-700 transition-colors"
             >
               ✕
             </button>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 lg:gap-8 items-start">
               {/* Galería e Info Básica */}
-              <div className="lg:col-span-6 space-y-4">
-                <div className="h-64 rounded-2xl overflow-hidden bg-slate-800 border border-slate-700">
+              <div className="xl:col-span-5 space-y-4">
+                <div className="h-64 sm:h-72 rounded-2xl overflow-hidden bg-slate-800 border border-slate-700">
                   <img
                     src={detailVehicle.images?.[0]?.url || 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=800&q=80'}
                     alt={detailVehicle.model}
@@ -327,13 +327,13 @@ export const CatalogPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <span className="text-xs font-bold uppercase text-slate-400">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
                     {detailVehicle.brand} · Año {detailVehicle.year}
                   </span>
-                  <h2 className="text-2xl font-black text-white">
+                  <h2 className="text-2xl sm:text-3xl font-black text-white">
                     {detailVehicle.brand} {detailVehicle.model}
                   </h2>
-                  <p className="text-2xl font-extrabold text-emerald-400 mt-1">
+                  <p className="text-2xl font-extrabold text-emerald-400 mt-1 font-mono">
                     {formatUSD(detailVehicle.salePrice)}
                   </p>
                 </div>
@@ -342,31 +342,19 @@ export const CatalogPage: React.FC = () => {
                   <h4 className="font-bold uppercase tracking-wider text-slate-400 text-[11px]">
                     Equipamiento y Características
                   </h4>
-                  <ul className="grid grid-cols-1 gap-1.5">
+                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {(detailVehicle.features || []).map((f: string, i: number) => (
-                      <li key={i} className="flex items-center gap-2">
+                      <li key={i} className="flex items-center gap-2 bg-slate-800/40 p-2 rounded-lg border border-slate-700/50">
                         <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                        <span>{f}</span>
+                        <span className="truncate">{f}</span>
                       </li>
                     ))}
                   </ul>
                 </div>
-
-                <div className="pt-4 border-t border-slate-800">
-                  <button
-                    onClick={() => {
-                      setLeadModalOpen(true);
-                    }}
-                    className="w-full py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-white text-slate-900 transition-all shadow-lg flex items-center justify-center gap-2"
-                  >
-                    <span>Iniciar Solicitud de Financiamiento</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                </div>
               </div>
 
               {/* Simulador Integrado para este vehículo */}
-              <div className="lg:col-span-6">
+              <div className="xl:col-span-7">
                 <FinancingSimulator
                   initialPrice={detailVehicle.salePrice}
                   initialDownPayment={detailVehicle.minDownPayment || detailVehicle.salePrice * 0.15}

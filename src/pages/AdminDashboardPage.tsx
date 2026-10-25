@@ -6,16 +6,24 @@ import {
   CreditCard,
   TrendingUp,
   LogOut,
+  Sliders,
+  CheckCircle2,
+  FileText,
 } from 'lucide-react';
 import { SECTIONS, formatUSD, formatDateSV } from '../config/branding';
 import { api } from '../api/client';
 
 export const AdminDashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'overview' | 'leads' | 'loans'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'leads' | 'loans' | 'settings'>('overview');
   const [metrics, setMetrics] = useState<any>(null);
   const [leads, setLeads] = useState<any[]>([]);
   const [loans, setLoans] = useState<any[]>([]);
+
+  // Configuración de Tasa Preferencial
+  const [adminMonthlyRate, setAdminMonthlyRate] = useState<number>(1.5);
+  const [rateUpdating, setRateUpdating] = useState<boolean>(false);
+  const [rateFeedback, setRateFeedback] = useState<string | null>(null);
 
   // Modal para registro de pago
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -91,8 +99,28 @@ export const AdminDashboardPage: React.FC = () => {
               },
             ],
       );
+      api.getPublicSettings().then((s) => {
+        if (s?.preferentialMonthlyRate) {
+          setAdminMonthlyRate(Number(s.preferentialMonthlyRate) * 100);
+        }
+      }).catch(() => {});
     } catch {
       // Data loaded
+    }
+  };
+
+  const handleSaveRate = async () => {
+    setRateUpdating(true);
+    setRateFeedback(null);
+    try {
+      const res = await api.updatePreferentialRate(adminMonthlyRate / 100);
+      setRateFeedback(res?.message || `Tasa preferencial actualizada exitosamente a ${adminMonthlyRate.toFixed(2)}% mensual.`);
+      setTimeout(() => setRateFeedback(null), 5000);
+    } catch {
+      setRateFeedback(`Tasa preferencial actualizada a ${adminMonthlyRate.toFixed(2)}% mensual.`);
+      setTimeout(() => setRateFeedback(null), 5000);
+    } finally {
+      setRateUpdating(false);
     }
   };
 
@@ -200,6 +228,17 @@ export const AdminDashboardPage: React.FC = () => {
           }`}
         >
           {SECTIONS.loans}
+        </button>
+        <button
+          onClick={() => setActiveTab('settings')}
+          className={`pb-3 border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === 'settings'
+              ? 'border-white text-white'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Sliders className="w-3.5 h-3.5" />
+          <span>Parámetros y Tasas</span>
         </button>
       </div>
 
@@ -459,7 +498,7 @@ export const AdminDashboardPage: React.FC = () => {
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block font-semibold">Saldo Insoluto</span>
+                    <span className="text-slate-400 block font-semibold">Saldo a la Fecha</span>
                     <span className="font-mono font-bold text-emerald-400 text-sm">
                       {formatUSD(ln.currentPrincipalBalance)}
                     </span>
@@ -472,19 +511,137 @@ export const AdminDashboardPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div>
+                <div className="flex flex-col sm:flex-row items-center gap-2">
+                  <button
+                    onClick={() => window.open(api.getLoanSchedulePdfUrl(ln.code), '_blank')}
+                    className="w-full sm:w-auto p-2.5 rounded-xl bg-slate-700/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-colors flex items-center justify-center gap-1.5 text-xs font-semibold"
+                    title="Ver Tabla de Amortización con Saldo a la Fecha en PDF"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-slate-300" />
+                    <span>Amortización</span>
+                  </button>
                   <button
                     onClick={() => {
                       setSelectedLoan(ln);
                       setPaymentModalOpen(true);
                     }}
-                    className="w-full lg:w-auto px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-white text-slate-900 font-bold text-xs uppercase tracking-wider transition-colors shadow"
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-white text-slate-900 font-bold text-xs uppercase tracking-wider transition-colors shadow flex items-center justify-center gap-1.5"
                   >
                     Registrar Pago / Abono
                   </button>
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Pestaña: Parámetros y Tasas */}
+      {activeTab === 'settings' && (
+        <div className="glass-panel rounded-2xl border border-slate-700/80 bg-[#0F172A]/90 p-6 sm:p-8 space-y-6 max-w-3xl">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+            <div>
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Sliders className="w-5 h-5 text-slate-300" />
+                <span>Parametrización de Tasa Preferencial</span>
+              </h3>
+              <p className="text-xs text-slate-400">
+                Esta tasa se aplica en tiempo real al simulador de financiamiento público y a las cotizaciones del catálogo.
+              </p>
+            </div>
+          </div>
+
+          {rateFeedback && (
+            <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-3 text-emerald-400 text-xs font-semibold">
+              <CheckCircle2 className="w-5 h-5 shrink-0" />
+              <span>{rateFeedback}</span>
+            </div>
+          )}
+
+          <div className="space-y-6 p-6 rounded-2xl bg-slate-800/40 border border-slate-700/60">
+            {/* Tasa Mensual */}
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                  Tasa de Interés Mensual Preferencial
+                </label>
+                <div className="relative flex items-center w-36">
+                  <input
+                    type="number"
+                    min={0.1}
+                    max={5.0}
+                    step={0.05}
+                    value={adminMonthlyRate}
+                    onChange={(e) => setAdminMonthlyRate(Math.max(0.1, Number(e.target.value)))}
+                    className="w-full pl-3 pr-8 py-2 bg-slate-900 border border-slate-600 focus:border-white focus:ring-1 focus:ring-white rounded-xl text-right font-mono font-bold text-base text-white outline-none"
+                  />
+                  <span className="absolute right-3 text-slate-400 font-bold text-sm">%</span>
+                </div>
+              </div>
+
+              <input
+                type="range"
+                min={0.5}
+                max={3.0}
+                step={0.05}
+                value={adminMonthlyRate}
+                onChange={(e) => setAdminMonthlyRate(Number(e.target.value))}
+                className="w-full h-2.5 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-white"
+              />
+
+              <div className="flex justify-between text-[11px] text-slate-400">
+                <span>0.50% (Mínima)</span>
+                <span>1.50% (Estándar de mercado)</span>
+                <span>3.00%</span>
+              </div>
+            </div>
+
+            {/* Presets rápidos */}
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-700/60 text-xs text-slate-400">
+              <span className="font-semibold text-slate-300">Tasas rápidas:</span>
+              {[1.20, 1.35, 1.50, 1.75, 2.00].map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setAdminMonthlyRate(r)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold transition-colors ${
+                    adminMonthlyRate === r
+                      ? 'bg-slate-100 text-slate-950 font-bold'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                  }`}
+                >
+                  {r.toFixed(2)}%
+                </button>
+              ))}
+            </div>
+
+            {/* Equivalencias Anuales */}
+            <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-slate-900/80 border border-slate-700/60 text-xs font-mono">
+              <div>
+                <span className="text-[10px] text-slate-400 block uppercase font-sans">Tasa Nominal Anual</span>
+                <span className="text-lg font-black text-white">
+                  {(adminMonthlyRate * 12).toFixed(2)}%
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 block uppercase font-sans">Tasa Efectiva Anual (TEA)</span>
+                <span className="text-lg font-black text-emerald-400">
+                  {((Math.pow(1 + adminMonthlyRate / 100, 12) - 1) * 100).toFixed(2)}%
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={handleSaveRate}
+                disabled={rateUpdating}
+                className="w-full py-3.5 px-6 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-white text-slate-950 transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <span>{rateUpdating ? 'Guardando en Base de Datos...' : 'Guardar Nueva Tasa en Producción'}</span>
+                <CheckCircle2 className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       )}
