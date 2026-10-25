@@ -761,12 +761,20 @@ export const AdminDashboardPage: React.FC = () => {
 
                 <div className="flex flex-col sm:flex-row items-center gap-2">
                   <button
-                    onClick={() => window.open(api.getLoanSchedulePdfUrl(ln.code), '_blank')}
+                    onClick={() => window.open(api.getLoanSchedulePdfUrl(ln.id || ln.code), '_blank')}
                     className="w-full sm:w-auto p-2.5 rounded-xl bg-slate-700/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-colors flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer"
-                    title="Ver Tabla de Amortización con Saldo a la Fecha en PDF"
+                    title="Descargar Tabla de Amortización Oficial en PDF"
                   >
                     <FileText className="w-3.5 h-3.5 text-slate-300" />
-                    <span>Amortización</span>
+                    <span>Amortización PDF</span>
+                  </button>
+                  <button
+                    onClick={() => window.open(api.getLoanStatementPdfUrl(ln.id || ln.code), '_blank')}
+                    className="w-full sm:w-auto p-2.5 rounded-xl bg-slate-700/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-colors flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer"
+                    title="Descargar Estado de Cuenta Oficial en PDF"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Estado Cuenta PDF</span>
                   </button>
                   <button
                     onClick={() => {
