@@ -11,7 +11,7 @@ export const BRANDING = {
   locale: import.meta.env.VITE_APP_LOCALE || 'es-SV',
   currency: import.meta.env.VITE_APP_CURRENCY || 'USD',
   timezone: import.meta.env.VITE_APP_TIMEZONE || 'America/El_Salvador',
-  apiUrl: import.meta.env.VITE_API_URL || 'http://localhost:4000/api/v1',
+  apiUrl: import.meta.env.VITE_API_URL || 'https://veltor-backend-production.up.railway.app/api/v1',
 };
 
 export const SECTIONS = {
