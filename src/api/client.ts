@@ -60,9 +60,19 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   getLeads: (status?: string) => request<any[]>(`/leads${status ? `?status=${status}` : ''}`),
+  updateLead: (id: string, payload: any) =>
+    request<any>(`/leads/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
   updateLeadStatus: (id: string, payload: any) =>
     request<any>(`/leads/${id}/status`, {
       method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  convertLeadToLoan: (id: string, payload: any) =>
+    request<any>(`/leads/${id}/convert-to-loan`, {
+      method: 'POST',
       body: JSON.stringify(payload),
     }),
 

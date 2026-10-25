@@ -107,6 +107,8 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
     const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
     const firstDueDate = nextMonth.toISOString().split('T')[0];
 
+    const effectiveTerm = Math.max(1, termMonths || 36);
+
     try {
       const res = await api.simulate({
         vehiclePrice: price.toFixed(2),
@@ -114,7 +116,7 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
         financedFees: '0.00',
         upfrontFees: '0.00',
         monthlyRate: rateDecimal,
-        termCount: termMonths,
+        termCount: effectiveTerm,
         startDate,
         firstDueDate,
         method: 'FRENCH',
@@ -125,7 +127,7 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
     } catch {
       // Fallback local seguro con fórmula francesa
       const i = monthlyRatePercent / 100;
-      const n = termMonths;
+      const n = effectiveTerm;
       let cuota = 0;
       if (principal > 0) {
         if (i === 0) cuota = principal / n;
@@ -302,21 +304,41 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
             </div>
           </div>
 
-          {/* 3. Plazo de Financiamiento */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-300">
+          {/* 3. Plazo de Financiamiento (Personalizable + Presets) */}
+          <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <label htmlFor="sim-term-input" className="text-xs font-bold uppercase tracking-wider text-slate-300">
                 Plazo de Financiamiento
               </label>
-              <span className="text-xs font-bold text-slate-200">{termMonths} meses</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-slate-400">Plazo personalizado:</span>
+                <div className="relative flex items-center w-32">
+                  <input
+                    id="sim-term-input"
+                    type="number"
+                    min={1}
+                    max={120}
+                    step={1}
+                    value={termMonths === 0 ? '' : termMonths}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      setTermMonths(isNaN(val) ? 0 : Math.max(0, Math.min(120, val)));
+                    }}
+                    placeholder="36"
+                    className="w-full pl-3 pr-10 py-1.5 bg-slate-900 border border-slate-600 focus:border-white focus:ring-1 focus:ring-white rounded-lg text-right font-mono font-bold text-sm text-white outline-none"
+                  />
+                  <span className="absolute right-2.5 text-slate-400 text-xs font-bold">meses</span>
+                </div>
+              </div>
             </div>
+
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
               {[12, 24, 36, 48, 60, 72].map((term) => (
                 <button
                   key={term}
                   type="button"
                   onClick={() => setTermMonths(term)}
-                  className={`py-2 px-1 text-center rounded-xl text-xs font-bold transition-all border whitespace-nowrap ${
+                  className={`py-2 px-1 text-center rounded-xl text-xs font-bold transition-all border whitespace-nowrap cursor-pointer ${
                     termMonths === term
                       ? 'bg-slate-100 text-slate-950 border-white shadow-md'
                       : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:border-slate-500 hover:text-white'
@@ -325,6 +347,11 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
                   {term} Meses
                 </button>
               ))}
+            </div>
+
+            <div className="flex justify-between items-center text-[11px] text-slate-400">
+              <span>Elige un plazo sugerido o ingresa una cantidad de meses personalizada libremente.</span>
+              <span className="font-mono text-slate-300 font-semibold">{termMonths || 36} cuotas</span>
             </div>
           </div>
 
