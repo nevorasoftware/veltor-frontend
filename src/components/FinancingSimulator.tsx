@@ -5,8 +5,8 @@ import {
   ShieldCheck,
   ChevronDown,
   ChevronUp,
-  Info,
   Calendar,
+  Percent,
 } from 'lucide-react';
 import { formatUSD, formatDateSV } from '../config/branding';
 import { api } from '../api/client';
@@ -15,7 +15,7 @@ interface FinancingSimulatorProps {
   initialPrice?: number;
   initialDownPayment?: number;
   vehicleName?: string;
-  onApplyLead?: (summary: { price: number; down: number; term: number; installment: number }) => void;
+  onApplyLead?: (summary: { price: number; down: number; term: number; installment: number; monthlyRate?: number }) => void;
 }
 
 export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
@@ -32,9 +32,9 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
   });
   const [termMonths, setTermMonths] = useState<number>(36);
 
-  // 2. Tasa preferencial parametrizable desde backend
+  // 2. Tasa de interés mensual parametrizable (por defecto toma la tasa del sistema)
   const [monthlyRatePercent, setMonthlyRatePercent] = useState<number>(1.5);
-  const [rateLoading, setRateLoading] = useState<boolean>(true);
+  const [defaultSystemRate, setDefaultSystemRate] = useState<number>(1.5);
 
   // 3. Estados de UI
   const [showSchedule, setShowSchedule] = useState<boolean>(false);
@@ -47,14 +47,13 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
       .getPublicSettings()
       .then((settings) => {
         if (mounted && settings?.preferentialMonthlyRate) {
-          setMonthlyRatePercent(Number(settings.preferentialMonthlyRate) * 100);
+          const r = Number(settings.preferentialMonthlyRate) * 100;
+          setMonthlyRatePercent(r);
+          setDefaultSystemRate(r);
         }
       })
       .catch(() => {
         // Mantiene 1.50% por defecto si no hay conexión
-      })
-      .finally(() => {
-        if (mounted) setRateLoading(false);
       });
     return () => {
       mounted = false;
@@ -355,15 +354,98 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
             </div>
           </div>
 
-          {/* 4. Tasa de Interés Preferencial */}
-          <div className="p-3.5 rounded-xl bg-slate-800/40 border border-slate-700/60 flex items-center justify-between text-xs text-slate-300">
-            <div className="flex items-center gap-2">
-              <Info className="w-4 h-4 text-slate-400 shrink-0" />
-              <span>Tasa preferencial vigente:</span>
+          {/* 4. Tasa de Interés Mensual Parametrizable */}
+          <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700/70 space-y-3 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <Percent className="w-4 h-4 text-cyan-400" />
+                <label htmlFor="sim-rate-input" className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                  Tasa de Interés Parametrizable
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-slate-400">Tasa mensual:</span>
+                <div className="relative flex items-center w-28">
+                  <input
+                    id="sim-rate-input"
+                    type="number"
+                    min={0.1}
+                    max={10.0}
+                    step={0.05}
+                    value={monthlyRatePercent}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      setMonthlyRatePercent(isNaN(val) ? 0 : Math.max(0, Math.min(25, val)));
+                    }}
+                    className="w-full pl-3 pr-7 py-1.5 bg-slate-900 border border-slate-600 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 rounded-lg text-right font-mono font-bold text-sm text-cyan-300 outline-none"
+                  />
+                  <span className="absolute right-2 text-slate-400 text-xs font-bold">%</span>
+                </div>
+              </div>
             </div>
-            <span className="font-bold text-white text-sm font-mono whitespace-nowrap">
-              {rateLoading ? '...' : `${monthlyRatePercent.toFixed(2)}% mensual`} ({(monthlyRatePercent * 12).toFixed(1)}% anual)
-            </span>
+
+            {/* Slider de Tasa */}
+            <div className="space-y-1">
+              <input
+                type="range"
+                min={0.5}
+                max={4.0}
+                step={0.05}
+                value={monthlyRatePercent}
+                onChange={(e) => setMonthlyRatePercent(parseFloat(e.target.value))}
+                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+              />
+              <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                <span>0.5% (Mínima)</span>
+                <span>2.0% (Media)</span>
+                <span>4.0% (Máxima)</span>
+              </div>
+            </div>
+
+            {/* Chips de selección rápida de tasas */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              {[0.99, 1.25, 1.5, 1.75, 2.0].map((rateVal) => (
+                <button
+                  key={rateVal}
+                  type="button"
+                  onClick={() => setMonthlyRatePercent(rateVal)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                    monthlyRatePercent === rateVal
+                      ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400/60 shadow-sm'
+                      : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200 hover:border-slate-600'
+                  }`}
+                >
+                  {rateVal.toFixed(2)}% {rateVal === defaultSystemRate ? '(Oficial)' : ''}
+                </button>
+              ))}
+              {monthlyRatePercent !== defaultSystemRate && (
+                <button
+                  type="button"
+                  onClick={() => setMonthlyRatePercent(defaultSystemRate)}
+                  className="px-2 py-0.5 rounded text-[10px] text-slate-400 hover:text-white underline ml-auto cursor-pointer"
+                >
+                  Restablecer oficial ({defaultSystemRate.toFixed(2)}%)
+                </button>
+              )}
+            </div>
+
+            {/* Equivalencias Financieras en tiempo real */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-700/60 text-[11px]">
+              <div className="p-2 rounded-lg bg-slate-900/60 border border-slate-800 text-center">
+                <span className="text-slate-400 block text-[10px]">Tasa Mensual</span>
+                <span className="font-mono font-bold text-white text-xs">{monthlyRatePercent.toFixed(2)}%</span>
+              </div>
+              <div className="p-2 rounded-lg bg-slate-900/60 border border-slate-800 text-center">
+                <span className="text-slate-400 block text-[10px]">Tasa Nominal Anual</span>
+                <span className="font-mono font-bold text-cyan-300 text-xs">{(monthlyRatePercent * 12).toFixed(2)}%</span>
+              </div>
+              <div className="col-span-2 sm:col-span-1 p-2 rounded-lg bg-slate-900/60 border border-slate-800 text-center">
+                <span className="text-slate-400 block text-[10px]">TEA Estimada</span>
+                <span className="font-mono font-bold text-emerald-400 text-xs">
+                  {((Math.pow(1 + monthlyRatePercent / 100, 12) - 1) * 100).toFixed(2)}%
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -391,6 +473,12 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
               <div className="flex justify-between">
                 <span>Prima abonada:</span>
                 <span className="font-bold text-emerald-400 font-mono">{formatUSD(downPayment)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Tasa aplicada:</span>
+                <span className="font-bold text-cyan-400 font-mono">
+                  {monthlyRatePercent.toFixed(2)}% mensual ({(monthlyRatePercent * 12).toFixed(1)}% anual)
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>Intereses estimados:</span>
@@ -421,6 +509,7 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
                     down: downPayment,
                     term: termMonths,
                     installment: Number(simulationData.installment),
+                    monthlyRate: monthlyRatePercent / 100,
                   });
                 }
               }}

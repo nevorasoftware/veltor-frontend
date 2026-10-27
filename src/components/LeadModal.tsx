@@ -18,6 +18,7 @@ interface LeadModalProps {
     down?: number;
     term?: number;
     installment?: number;
+    monthlyRate?: number;
   };
 }
 
@@ -103,7 +104,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
               <h3 className="text-xl font-extrabold text-white">
                 {vehicle ? `${vehicle.brand} ${vehicle.model} ${vehicle.year}` : 'Solicita tu Financiamiento'}
               </h3>
-              {vehicle && (
+              {vehicle ? (
                 <div className="flex items-center gap-2 mt-1 text-xs text-slate-300 font-medium">
                   <Car className="w-4 h-4 text-slate-400" />
                   <span>Precio: {formatUSD(vehicle.salePrice)}</span>
@@ -113,7 +114,23 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
                     </span>
                   )}
                 </div>
-              )}
+              ) : initialTerms ? (
+                <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs text-slate-300 font-medium">
+                  {initialTerms.price && <span>Precio: {formatUSD(initialTerms.price)}</span>}
+                  {initialTerms.down !== undefined && <span>· Prima: {formatUSD(initialTerms.down)}</span>}
+                  {initialTerms.term && <span>· Plazo: {initialTerms.term} meses</span>}
+                  {initialTerms.monthlyRate !== undefined && (
+                    <span className="text-cyan-400 font-semibold">
+                      · Tasa: {(initialTerms.monthlyRate * 100).toFixed(2)}% m.
+                    </span>
+                  )}
+                  {initialTerms.installment && (
+                    <span className="text-emerald-400 font-semibold">
+                      · Cuota: {formatUSD(initialTerms.installment)}/mes
+                    </span>
+                  )}
+                </div>
+              ) : null}
             </div>
 
             {errorMsg && (

@@ -144,5 +144,26 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ monthlyRate }),
     }),
+
+  // Control de Gastos y Contabilidad
+  getExpenses: (params?: any) => {
+    const q = new URLSearchParams(params || {}).toString();
+    return request<any[]>(`/expenses${q ? `?${q}` : ''}`);
+  },
+  getExpensesSummary: () => request<any>('/expenses/summary'),
+  createExpense: (payload: any) =>
+    request<any>('/expenses', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateExpense: (id: string, payload: any) =>
+    request<any>(`/expenses/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteExpense: (id: string) =>
+    request<any>(`/expenses/${id}`, {
+      method: 'DELETE',
+    }),
 };
 
