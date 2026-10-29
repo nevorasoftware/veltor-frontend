@@ -146,6 +146,9 @@ export const api = {
   getPublicSettings: () => request<any>('/settings/public'),
   updatePreferentialRate: (monthlyRate: number) =>
     request<any>('/settings/preferential-rate', json('PATCH', { monthlyRate })),
+  getNotificationSettings: () => request<any>('/settings/notifications'),
+  updateStaffEmails: (staffEmails: string[]) =>
+    request<any>('/settings/notifications', json('PATCH', { staffEmails })),
 
   // Control de Gastos y Contabilidad
   getExpenses: (params?: Record<string, string>) => {

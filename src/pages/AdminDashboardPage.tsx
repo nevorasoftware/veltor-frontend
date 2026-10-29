@@ -61,6 +61,12 @@ export const AdminDashboardPage: React.FC = () => {
   const [rateFeedback, setRateFeedback] = useState<string | null>(null);
   const [rateError, setRateError] = useState<string | null>(null);
 
+  // Correos del personal que reciben avisos (nuevo prospecto, crédito aprobado)
+  const [staffEmailsInput, setStaffEmailsInput] = useState<string>('');
+  const [staffEmailsSaving, setStaffEmailsSaving] = useState<boolean>(false);
+  const [staffEmailsFeedback, setStaffEmailsFeedback] = useState<string | null>(null);
+  const [staffEmailsError, setStaffEmailsError] = useState<string | null>(null);
+
   // Modal para registro de pago
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedLoan, setSelectedLoan] = useState<any>(null);
@@ -158,6 +164,10 @@ export const AdminDashboardPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    api
+      .getNotificationSettings()
+      .then((res) => setStaffEmailsInput((res?.staffEmails || []).join(', ')))
+      .catch(() => {});
   }, []);
 
   const loadExpenses = async () => {
@@ -307,6 +317,23 @@ export const AdminDashboardPage: React.FC = () => {
       setRateError(err.message || 'No se pudo actualizar la tasa.');
     } finally {
       setRateUpdating(false);
+    }
+  };
+
+  const handleSaveStaffEmails = async () => {
+    setStaffEmailsSaving(true);
+    setStaffEmailsFeedback(null);
+    setStaffEmailsError(null);
+    try {
+      const emails = staffEmailsInput.split(/[,;\s]+/).filter(Boolean);
+      const res = await api.updateStaffEmails(emails);
+      setStaffEmailsInput((res?.staffEmails || []).join(', '));
+      setStaffEmailsFeedback(res?.message || 'Correos de notificación actualizados.');
+      setTimeout(() => setStaffEmailsFeedback(null), 5000);
+    } catch (err: any) {
+      setStaffEmailsError(err.message || 'No se pudieron guardar los correos.');
+    } finally {
+      setStaffEmailsSaving(false);
     }
   };
 
@@ -1200,6 +1227,50 @@ export const AdminDashboardPage: React.FC = () => {
                 <CheckCircle2 className="w-4 h-4" />
               </button>
             </div>
+          </div>
+
+          {/* Correos de notificación al personal */}
+          <div className="space-y-4 p-6 rounded-2xl bg-slate-800/40 border border-slate-700/60">
+            <div>
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                <Mail className="w-4 h-4 text-slate-300" />
+                <span>Correos de Notificación al Personal</span>
+              </h4>
+              <p className="text-xs text-slate-400 mt-1">
+                Reciben un aviso cada vez que se registra un nuevo prospecto y cuando se aprueba un crédito. Separe varios correos con comas.
+              </p>
+            </div>
+
+            {staffEmailsFeedback && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-3 text-emerald-400 text-xs font-semibold">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{staffEmailsFeedback}</span>
+              </div>
+            )}
+            {staffEmailsError && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center gap-3 text-rose-300 text-xs font-semibold">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{staffEmailsError}</span>
+              </div>
+            )}
+
+            <textarea
+              rows={2}
+              value={staffEmailsInput}
+              onChange={(e) => setStaffEmailsInput(e.target.value)}
+              placeholder="admin@empresa.com, ventas@empresa.com"
+              className="w-full px-3 py-2 bg-slate-900 border border-slate-600 focus:border-white focus:ring-1 focus:ring-white rounded-xl text-sm font-mono text-white outline-none resize-none"
+            />
+
+            <button
+              type="button"
+              onClick={handleSaveStaffEmails}
+              disabled={staffEmailsSaving}
+              className="w-full py-3 px-6 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-white text-slate-950 transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              <span>{staffEmailsSaving ? 'Guardando...' : 'Guardar Correos de Notificación'}</span>
+              <CheckCircle2 className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}
