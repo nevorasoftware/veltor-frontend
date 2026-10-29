@@ -24,6 +24,9 @@ import {
   DollarSign,
   Calendar,
   Percent,
+  Mail,
+  LayoutDashboard,
+  LayoutGrid,
 } from 'lucide-react';
 import { SECTIONS, formatUSD, formatDateSV, todayLocalISO } from '../config/branding';
 import { api } from '../api/client';
@@ -74,6 +77,8 @@ export const AdminDashboardPage: React.FC = () => {
   // Acceso al portal del cliente
   const [portalAccessInfo, setPortalAccessInfo] = useState<{ loanCode: string; email: string; temporaryPassword: string } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [emailingLoanId, setEmailingLoanId] = useState<string | null>(null);
   const [paymentKind, setPaymentKind] = useState<'INSTALLMENT' | 'PRINCIPAL_PREPAYMENT' | 'PAYOFF'>('INSTALLMENT');
   const [prepayPolicy, setPrepayPolicy] = useState<'REDUCE_TERM' | 'REDUCE_INSTALLMENT'>('REDUCE_TERM');
   const [paymentSuccessMsg, setPaymentSuccessMsg] = useState<string | null>(null);
@@ -317,6 +322,22 @@ export const AdminDashboardPage: React.FC = () => {
       else await api.openLoanStatementPdf(loanId);
     } catch (err: any) {
       setActionError(err.message || 'No se pudo generar el PDF.');
+    }
+  };
+
+  const handleEmailStatement = async (loan: any) => {
+    const email = loan.customer?.email;
+    if (!window.confirm(`¿Enviar el estado de cuenta del crédito ${loan.code} a ${email || 'el correo del cliente'}?`)) return;
+    setActionError(null);
+    setActionNotice(null);
+    setEmailingLoanId(loan.id);
+    try {
+      const res = await api.emailLoanStatement(loan.id);
+      setActionNotice(`Estado de cuenta del crédito ${loan.code} enviado a ${res.to}.`);
+    } catch (err: any) {
+      setActionError(err.message || 'No se pudo enviar el estado de cuenta.');
+    } finally {
+      setEmailingLoanId(null);
     }
   };
 
@@ -611,81 +632,50 @@ export const AdminDashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Pestañas de Navegación del Panel */}
-      <div className="flex items-center gap-6 border-b border-slate-800 text-sm font-semibold overflow-x-auto whitespace-nowrap">
-        <button
-          onClick={() => setActiveTab('overview')}
-          className={`pb-3 border-b-2 transition-all cursor-pointer ${
-            activeTab === 'overview'
-              ? 'border-white text-white'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          Resumen General
-        </button>
-        <button
-          onClick={() => setActiveTab('leads')}
-          className={`pb-3 border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
-            activeTab === 'leads'
-              ? 'border-white text-white'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <span>Prospectos</span>
-          <span className="px-1.5 py-0.5 rounded-full bg-slate-800 text-[10px] text-slate-300">
-            {leads.length}
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab('loans')}
-          className={`pb-3 border-b-2 transition-all cursor-pointer ${
-            activeTab === 'loans'
-              ? 'border-white text-white'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          {SECTIONS.loans}
-        </button>
-        <button
-          onClick={() => setActiveTab('vehicles')}
-          className={`pb-3 border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
-            activeTab === 'vehicles'
-              ? 'border-white text-white'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Car className="w-3.5 h-3.5 text-slate-300" />
-          <span>Vehículos</span>
-          <span className="px-1.5 py-0.5 rounded-full bg-slate-800 text-[10px] text-slate-300 font-mono">
-            {vehicles.length}
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab('expenses')}
-          className={`pb-3 border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
-            activeTab === 'expenses'
-              ? 'border-white text-white'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Receipt className="w-3.5 h-3.5 text-amber-400" />
-          <span>Control de Gastos</span>
-          <span className="px-1.5 py-0.5 rounded-full bg-slate-800 text-[10px] text-amber-300 font-mono">
-            {expenses.length}
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab('settings')}
-          className={`pb-3 border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
-            activeTab === 'settings'
-              ? 'border-white text-white'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Sliders className="w-3.5 h-3.5" />
-          <span>Parámetros y Tasas</span>
-        </button>
-      </div>
+      {/* Menú de Módulos del Panel */}
+      <nav aria-label="Menú de administración" className="rounded-2xl border border-slate-700/60 bg-slate-900/60 p-2 shadow-lg">
+        <div className="flex items-center gap-2 px-2 pt-1 pb-2">
+          <LayoutGrid className="w-3.5 h-3.5 text-sky-400" />
+          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Menú de administración</span>
+        </div>
+        <div className="flex gap-2 overflow-x-auto whitespace-nowrap">
+          {([
+            { key: 'overview', label: 'Resumen General', icon: LayoutDashboard },
+            { key: 'leads', label: 'Prospectos', icon: Users, count: leads.length },
+            { key: 'loans', label: SECTIONS.loans, icon: CreditCard },
+            { key: 'vehicles', label: 'Vehículos', icon: Car, count: vehicles.length },
+            { key: 'expenses', label: 'Control de Gastos', icon: Receipt, count: expenses.length },
+            { key: 'settings', label: 'Parámetros y Tasas', icon: Sliders },
+          ] as const).map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                aria-current={active ? 'page' : undefined}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer border ${
+                  active
+                    ? 'bg-sky-500/15 border-sky-400/50 text-white shadow-[0_0_0_1px_rgba(56,189,248,0.15)]'
+                    : 'bg-slate-800/40 border-slate-700/50 text-slate-300 hover:bg-slate-800 hover:text-white hover:border-slate-600'
+                }`}
+              >
+                <Icon className={`w-4 h-4 ${active ? 'text-sky-400' : 'text-slate-400'}`} />
+                <span>{tab.label}</span>
+                {'count' in tab && (
+                  <span
+                    className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${
+                      active ? 'bg-sky-400/20 text-sky-200' : 'bg-slate-700/70 text-slate-300'
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
 
       {(loadError || actionError) && (
         <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center justify-between gap-3">
@@ -701,6 +691,18 @@ export const AdminDashboardPage: React.FC = () => {
             className="text-rose-200 hover:text-white font-semibold cursor-pointer"
           >
             {actionError ? 'Cerrar' : 'Reintentar'}
+          </button>
+        </div>
+      )}
+
+      {actionNotice && (
+        <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs flex items-center justify-between gap-3">
+          <span className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            {actionNotice}
+          </span>
+          <button onClick={() => setActionNotice(null)} className="text-emerald-200 hover:text-white font-semibold cursor-pointer">
+            Cerrar
           </button>
         </div>
       )}
@@ -1054,6 +1056,15 @@ export const AdminDashboardPage: React.FC = () => {
                   >
                     <FileText className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Estado Cuenta PDF</span>
+                  </button>
+                  <button
+                    disabled={emailingLoanId === ln.id}
+                    onClick={() => handleEmailStatement(ln)}
+                    className="w-full sm:w-auto p-2.5 rounded-xl bg-slate-700/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-colors flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-wait"
+                    title="Enviar el Estado de Cuenta en PDF al correo del cliente"
+                  >
+                    <Mail className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>{emailingLoanId === ln.id ? 'Enviando...' : 'Enviar por correo'}</span>
                   </button>
                   <button
                     onClick={() => handleGrantPortalAccess(ln)}

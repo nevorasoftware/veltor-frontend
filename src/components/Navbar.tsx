@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Car, Calculator, UserCheck, Menu, X, ArrowRight } from 'lucide-react';
+import { Car, Calculator, UserCheck, Menu, X, ArrowRight, LayoutDashboard } from 'lucide-react';
 import { SECTIONS } from '../config/branding';
+import { getUser, hasValidSession, isCustomer } from '../auth/session';
 
 export const Navbar: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -13,6 +14,12 @@ export const Navbar: React.FC = () => {
   ];
 
   const isActive = (path: string) => location.pathname === path;
+
+  // Se recalcula en cada cambio de ruta (login/logout navegan), así refleja la sesión actual.
+  const loggedIn = hasValidSession();
+  const user = loggedIn ? getUser() : null;
+  const showClientPortal = !loggedIn || isCustomer(user);
+  const showAdminPanel = loggedIn && !isCustomer(user);
 
   return (
     <header className="sticky top-0 z-50 glass-panel border-b border-slate-700/50 bg-[#0B132B]/90 backdrop-blur-md">
@@ -59,19 +66,32 @@ export const Navbar: React.FC = () => {
 
           {/* Acceso a Portal y Panel */}
           <div className="hidden md:flex items-center gap-4">
-            <Link
-              to="/portal"
-              className="text-xs font-semibold text-slate-300 hover:text-white px-3 py-2 rounded-lg border border-slate-700 hover:border-slate-500 transition-all"
-            >
-              {SECTIONS.clientPortal}
-            </Link>
-            <Link
-              to="/login"
-              className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-900 bg-slate-100 hover:bg-white px-4 py-2.5 rounded-lg transition-all shadow-sm hover:shadow"
-            >
-              <UserCheck className="w-4 h-4 text-slate-800" />
-              <span>Acceso</span>
-            </Link>
+            {showClientPortal && (
+              <Link
+                to="/portal"
+                className="text-xs font-semibold text-slate-300 hover:text-white px-3 py-2 rounded-lg border border-slate-700 hover:border-slate-500 transition-all"
+              >
+                {SECTIONS.clientPortal}
+              </Link>
+            )}
+            {showAdminPanel && (
+              <Link
+                to="/admin"
+                className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-sky-200 bg-sky-500/15 hover:bg-sky-500/25 border border-sky-400/40 px-4 py-2.5 rounded-lg transition-all"
+              >
+                <LayoutDashboard className="w-4 h-4 text-sky-400" />
+                <span>Panel Admin</span>
+              </Link>
+            )}
+            {!loggedIn && (
+              <Link
+                to="/login"
+                className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-900 bg-slate-100 hover:bg-white px-4 py-2.5 rounded-lg transition-all shadow-sm hover:shadow"
+              >
+                <UserCheck className="w-4 h-4 text-slate-800" />
+                <span>Acceso</span>
+              </Link>
+            )}
           </div>
 
           {/* Botón Móvil */}
@@ -109,22 +129,36 @@ export const Navbar: React.FC = () => {
             );
           })}
           <div className="pt-4 border-t border-slate-800 flex flex-col gap-2">
-            <Link
-              to="/portal"
-              onClick={() => setIsOpen(false)}
-              className="flex items-center justify-between px-3 py-2 rounded-lg text-sm text-slate-300 border border-slate-700"
-            >
-              <span>{SECTIONS.clientPortal}</span>
-              <ArrowRight className="w-4 h-4 text-slate-400" />
-            </Link>
-            <Link
-              to="/login"
-              onClick={() => setIsOpen(false)}
-              className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-bold bg-white text-slate-900"
-            >
-              <UserCheck className="w-4 h-4 text-slate-900" />
-              <span>Ingresar al Sistema</span>
-            </Link>
+            {showClientPortal && (
+              <Link
+                to="/portal"
+                onClick={() => setIsOpen(false)}
+                className="flex items-center justify-between px-3 py-2 rounded-lg text-sm text-slate-300 border border-slate-700"
+              >
+                <span>{SECTIONS.clientPortal}</span>
+                <ArrowRight className="w-4 h-4 text-slate-400" />
+              </Link>
+            )}
+            {showAdminPanel && (
+              <Link
+                to="/admin"
+                onClick={() => setIsOpen(false)}
+                className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-bold bg-sky-500/15 border border-sky-400/40 text-sky-200"
+              >
+                <LayoutDashboard className="w-4 h-4 text-sky-400" />
+                <span>Panel Admin</span>
+              </Link>
+            )}
+            {!loggedIn && (
+              <Link
+                to="/login"
+                onClick={() => setIsOpen(false)}
+                className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-bold bg-white text-slate-900"
+              >
+                <UserCheck className="w-4 h-4 text-slate-900" />
+                <span>Ingresar al Sistema</span>
+              </Link>
+            )}
           </div>
         </div>
       )}

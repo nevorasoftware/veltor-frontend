@@ -121,6 +121,8 @@ export const api = {
   // Documentos PDF oficiales (requieren sesión)
   openLoanSchedulePdf: (loanId: string) => openProtectedFile(`/finance/loans/${loanId}/schedule.pdf`),
   openLoanStatementPdf: (loanId: string) => openProtectedFile(`/finance/loans/${loanId}/statement.pdf`),
+  emailLoanStatement: (loanId: string, to?: string) =>
+    request<{ status: string; to: string }>(`/finance/loans/${loanId}/statement/email`, json('POST', to ? { to } : {})),
 
   // Portal del cliente
   getPortalMe: () => request<any>('/portal/me'),
