@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Car, Check } from 'lucide-react';
 import { LeadModal } from '../components/LeadModal';
 import { FinancingSimulator } from '../components/FinancingSimulator';
 import { SECTIONS, formatUSD } from '../config/branding';
 import { api } from '../api/client';
+import { usePublicSettings } from '../hooks/usePublicSettings';
+import { VehicleImage } from '../components/VehicleImage';
+import { TRANSMISSION_LABELS, estimatedInstallment, primaryImageUrl, suggestedDownPayment } from '../utils/vehicles';
 
 export const CatalogPage: React.FC = () => {
   const [vehicles, setVehicles] = useState<any[]>([]);
@@ -11,105 +14,39 @@ export const CatalogPage: React.FC = () => {
   const [search, setSearch] = useState<string>('');
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
-  const [maxPrice, setMaxPrice] = useState<number>(50000);
+  const [maxPrice, setMaxPrice] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const { data: settings } = usePublicSettings();
 
   // Modal de detalle y cotización
   const [detailVehicle, setDetailVehicle] = useState<any | null>(null);
   const [leadModalOpen, setLeadModalOpen] = useState<boolean>(false);
+  const [simulationSummary, setSimulationSummary] = useState<any>(null);
 
   useEffect(() => {
     setLoading(true);
-    api.getVehicles()
-      .then((res) => {
-        if (res?.items && res.items.length > 0) {
-          setVehicles(res.items);
-        } else {
-          loadFallbackCatalog();
-        }
-      })
-      .catch(() => {
-        loadFallbackCatalog();
-      })
+    api
+      .getVehicles('limit=100')
+      .then((res) => setVehicles(res?.items || []))
+      .catch((err) => setLoadError(err.message || 'No fue posible cargar el catálogo.'))
       .finally(() => setLoading(false));
   }, []);
 
-  const loadFallbackCatalog = () => {
-    setVehicles([
-      {
-        id: 'v1',
-        brand: 'Toyota',
-        model: 'Corolla LE',
-        year: 2023,
-        type: 'Sedán',
-        transmission: 'AUTOMATIC',
-        fuel: 'GASOLINE',
-        mileageKm: 24500,
-        color: 'Gris Grafito',
-        salePrice: 19800,
-        minDownPayment: 2970,
-        description: 'Vehículo en excelente estado, único dueño con mantenimiento en agencia. Equipado con Toyota Safety Sense, cámara de retroceso y conectividad Apple CarPlay / Android Auto.',
-        features: ['Apple CarPlay / Android Auto', 'Cámara de reversa', 'Sensores de punto ciego', 'Frenado autónomo de emergencia', 'Rines de aluminio 16"'],
-        images: [{ url: 'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?auto=format&fit=crop&w=800&q=80' }],
-      },
-      {
-        id: 'v2',
-        brand: 'Honda',
-        model: 'CR-V EX',
-        year: 2022,
-        type: 'SUV',
-        transmission: 'AUTOMATIC',
-        fuel: 'GASOLINE',
-        mileageKm: 38200,
-        color: 'Azul Noche Perlado',
-        salePrice: 26500,
-        minDownPayment: 3975,
-        description: 'Camioneta familiar espaciosa y económica gracias a su motor 1.5L Turbo. Techo corredizo, asientos eléctricos y sistema de seguridad Honda Sensing.',
-        features: ['Sunroof panorámico', 'Tracción AWD', 'Arranque por botón', 'Climatizador bizona', 'Rines 18"'],
-        images: [{ url: 'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=800&q=80' }],
-      },
-      {
-        id: 'v3',
-        brand: 'Nissan',
-        model: 'Frontier PRO-4X',
-        year: 2024,
-        type: 'Pickup',
-        transmission: 'AUTOMATIC',
-        fuel: 'DIESEL',
-        mileageKm: 9800,
-        color: 'Gris Volcánico',
-        salePrice: 38900,
-        minDownPayment: 5835,
-        description: 'Poderoso pickup todoterreno listo para trabajo y recreación. Tracción 4x4 con reductora, bloqueo de diferencial trasero, cámara 360 y suspensión reforzada.',
-        features: ['Tracción 4x4 con reductora', 'Cámara de visión 360°', 'Asientos de cuero con logo PRO-4X', 'Estribos laterales', 'Capota de batea'],
-        images: [{ url: 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=800&q=80' }],
-      },
-      {
-        id: 'v4',
-        brand: 'Mazda',
-        model: 'CX-5 Grand Touring',
-        year: 2023,
-        type: 'SUV',
-        transmission: 'AUTOMATIC',
-        fuel: 'GASOLINE',
-        mileageKm: 21000,
-        color: 'Blanco Nieve',
-        salePrice: 27900,
-        minDownPayment: 4185,
-        description: 'Elegancia, lujo y dinamismo con tecnología SkyActiv. Sonido Bose con 10 bocinas, tapicería en cuero legítimo y compuerta trasera eléctrica.',
-        features: ['Sistema de sonido Bose', 'Head-up Display', 'Faros adaptativos LED', 'Tapicería en cuero legítimo'],
-        images: [{ url: 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=800&q=80' }],
-      },
-    ]);
-  };
+  // Opciones de filtro derivadas del inventario real
+  const brands = useMemo(() => [...new Set(vehicles.map((v) => v.brand))].sort(), [vehicles]);
+  const types = useMemo(() => [...new Set(vehicles.map((v) => v.type))].sort(), [vehicles]);
+  const priceCeiling = useMemo(() => {
+    const top = Math.max(0, ...vehicles.map((v) => Number(v.salePrice) || 0));
+    return Math.ceil(top / 1000) * 1000;
+  }, [vehicles]);
+  const effectiveMaxPrice = maxPrice ?? priceCeiling;
 
   const filteredVehicles = vehicles.filter((v) => {
-    const matchSearch =
-      search === '' ||
-      v.brand.toLowerCase().includes(search.toLowerCase()) ||
-      v.model.toLowerCase().includes(search.toLowerCase());
-    const matchBrand = selectedBrand === 'all' || v.brand.toLowerCase() === selectedBrand.toLowerCase();
-    const matchType = selectedType === 'all' || v.type.toLowerCase() === selectedType.toLowerCase();
-    const matchPrice = v.salePrice <= maxPrice;
+    const q = search.trim().toLowerCase();
+    const matchSearch = q === '' || `${v.brand} ${v.model}`.toLowerCase().includes(q);
+    const matchBrand = selectedBrand === 'all' || v.brand === selectedBrand;
+    const matchType = selectedType === 'all' || v.type === selectedType;
+    const matchPrice = Number(v.salePrice) <= effectiveMaxPrice;
     return matchSearch && matchBrand && matchType && matchPrice;
   });
 
@@ -160,10 +97,11 @@ export const CatalogPage: React.FC = () => {
             className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:border-slate-400"
           >
             <option value="all">Todas las marcas</option>
-            <option value="Toyota">Toyota</option>
-            <option value="Honda">Honda</option>
-            <option value="Nissan">Nissan</option>
-            <option value="Mazda">Mazda</option>
+            {brands.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -179,9 +117,11 @@ export const CatalogPage: React.FC = () => {
             className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:border-slate-400"
           >
             <option value="all">Todos los tipos</option>
-            <option value="Sedán">Sedán</option>
-            <option value="SUV">SUV</option>
-            <option value="Pickup">Pickup</option>
+            {types.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -189,14 +129,15 @@ export const CatalogPage: React.FC = () => {
         <div>
           <div className="flex justify-between text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
             <span>Precio Máx.</span>
-            <span className="text-white font-mono">{formatUSD(maxPrice)}</span>
+            <span className="text-white font-mono">{formatUSD(effectiveMaxPrice)}</span>
           </div>
           <input
             type="range"
-            min={10000}
-            max={50000}
-            step={2000}
-            value={maxPrice}
+            min={0}
+            max={priceCeiling}
+            step={500}
+            disabled={vehicles.length === 0}
+            value={effectiveMaxPrice}
             onChange={(e) => setMaxPrice(Number(e.target.value))}
             className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-slate-300 mt-2"
           />
@@ -211,16 +152,21 @@ export const CatalogPage: React.FC = () => {
       ) : filteredVehicles.length === 0 ? (
         <div className="text-center py-16 glass-panel rounded-2xl border border-slate-800 text-slate-400 space-y-3">
           <Car className="w-10 h-10 mx-auto text-slate-400" />
-          <h3 className="text-base font-bold text-white">No se encontraron vehículos</h3>
+          <h3 className="text-base font-bold text-white">
+            {loadError ? 'No fue posible cargar el catálogo' : vehicles.length === 0 ? 'Aún no hay vehículos publicados' : 'No se encontraron vehículos'}
+          </h3>
           <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            Intenta ajustar los filtros de precio, tipo o marca para ver más opciones disponibles.
+            {loadError
+              ? 'Intenta nuevamente en unos minutos.'
+              : vehicles.length === 0
+              ? 'Pronto publicaremos nuevas unidades. Mientras tanto puedes usar el simulador de financiamiento.'
+              : 'Intenta ajustar los filtros de precio, tipo o marca para ver más opciones disponibles.'}
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {filteredVehicles.map((v) => {
-            const imgUrl = v.images?.[0]?.url || 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=800&q=80';
-            const cuotaEstimada = Math.round((v.salePrice - (v.minDownPayment || v.salePrice * 0.15)) * 0.035);
+            const cuotaEstimada = estimatedInstallment(v, settings);
 
             return (
               <div
@@ -229,11 +175,7 @@ export const CatalogPage: React.FC = () => {
               >
                 <div>
                   <div className="relative h-52 w-full overflow-hidden bg-slate-800">
-                    <img
-                      src={imgUrl}
-                      alt={`${v.brand} ${v.model}`}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
+                    <VehicleImage src={primaryImageUrl(v)} alt={`${v.brand} ${v.model}`} />
                     <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-slate-900/80 backdrop-blur-md text-[11px] font-bold text-white border border-slate-700">
                       {v.type || 'Vehículo'} · {v.year}
                     </div>
@@ -248,11 +190,11 @@ export const CatalogPage: React.FC = () => {
                         {v.brand} {v.model}
                       </h3>
                       <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
-                        <span>{v.mileageKm?.toLocaleString()} km</span>
+                        <span>{Number(v.mileageKm || 0).toLocaleString('es-SV')} km</span>
                         <span>·</span>
                         <span>{v.color}</span>
                         <span>·</span>
-                        <span>Automático</span>
+                        <span>{TRANSMISSION_LABELS[v.transmission] || v.transmission}</span>
                       </div>
                     </div>
 
@@ -265,14 +207,16 @@ export const CatalogPage: React.FC = () => {
                           {formatUSD(v.salePrice)}
                         </span>
                       </div>
-                      <div className="text-right">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                          Cuota Estimada
-                        </span>
-                        <span className="text-sm font-extrabold text-emerald-400">
-                          {formatUSD(cuotaEstimada)}/mes
-                        </span>
-                      </div>
+                      {cuotaEstimada !== null && (
+                        <div className="text-right">
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                            Cuota Estimada
+                          </span>
+                          <span className="text-sm font-extrabold text-emerald-400">
+                            {formatUSD(cuotaEstimada)}/mes
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="text-xs text-slate-400 line-clamp-2">
@@ -291,6 +235,7 @@ export const CatalogPage: React.FC = () => {
                   <button
                     onClick={() => {
                       setDetailVehicle(v);
+                      setSimulationSummary(null);
                       setLeadModalOpen(true);
                     }}
                     className="flex-1 py-2.5 px-3 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-white text-slate-900 transition-colors shadow"
@@ -319,11 +264,7 @@ export const CatalogPage: React.FC = () => {
               {/* Galería e Info Básica */}
               <div className="xl:col-span-5 space-y-4">
                 <div className="h-64 sm:h-72 rounded-2xl overflow-hidden bg-slate-800 border border-slate-700">
-                  <img
-                    src={detailVehicle.images?.[0]?.url || 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=800&q=80'}
-                    alt={detailVehicle.model}
-                    className="w-full h-full object-cover"
-                  />
+                  <VehicleImage src={primaryImageUrl(detailVehicle)} alt={`${detailVehicle.brand} ${detailVehicle.model}`} />
                 </div>
 
                 <div>
@@ -357,9 +298,10 @@ export const CatalogPage: React.FC = () => {
               <div className="xl:col-span-7">
                 <FinancingSimulator
                   initialPrice={detailVehicle.salePrice}
-                  initialDownPayment={detailVehicle.minDownPayment || detailVehicle.salePrice * 0.15}
+                  initialDownPayment={suggestedDownPayment(detailVehicle, settings)}
                   vehicleName={`${detailVehicle.brand} ${detailVehicle.model}`}
-                  onApplyLead={() => {
+                  onApplyLead={(summary) => {
+                    setSimulationSummary(summary);
                     setLeadModalOpen(true);
                   }}
                 />
@@ -374,6 +316,7 @@ export const CatalogPage: React.FC = () => {
         isOpen={leadModalOpen}
         onClose={() => setLeadModalOpen(false)}
         vehicle={detailVehicle}
+        initialTerms={simulationSummary}
       />
     </div>
   );

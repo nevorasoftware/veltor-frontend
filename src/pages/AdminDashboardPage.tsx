@@ -25,9 +25,13 @@ import {
   Calendar,
   Percent,
 } from 'lucide-react';
-import { SECTIONS, formatUSD, formatDateSV } from '../config/branding';
+import { SECTIONS, formatUSD, formatDateSV, todayLocalISO } from '../config/branding';
 import { api } from '../api/client';
 import { formatDUI, formatNIT, isValidDUI, isValidNIT, compressAndReadFileAsBase64 } from '../utils/formatters';
+import { clearSession, getUser } from '../auth/session';
+import { AdminVehiclesTab } from '../components/admin/AdminVehiclesTab';
+import { usePublicSettings } from '../hooks/usePublicSettings';
+import { suggestedDownPayment } from '../utils/vehicles';
 
 interface UploadedDocState {
   file: File;
@@ -40,7 +44,9 @@ interface UploadedDocState {
 
 export const AdminDashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'overview' | 'leads' | 'loans' | 'expenses' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'leads' | 'loans' | 'vehicles' | 'expenses' | 'settings'>('overview');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const { data: publicSettings, refetch: refetchSettings } = usePublicSettings();
   const [metrics, setMetrics] = useState<any>(null);
   const [leads, setLeads] = useState<any[]>([]);
   const [loans, setLoans] = useState<any[]>([]);
@@ -50,11 +56,24 @@ export const AdminDashboardPage: React.FC = () => {
   const [adminMonthlyRate, setAdminMonthlyRate] = useState<number>(1.5);
   const [rateUpdating, setRateUpdating] = useState<boolean>(false);
   const [rateFeedback, setRateFeedback] = useState<string | null>(null);
+  const [rateError, setRateError] = useState<string | null>(null);
 
   // Modal para registro de pago
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedLoan, setSelectedLoan] = useState<any>(null);
-  const [paymentAmount, setPaymentAmount] = useState('578.43');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState<string>(todayLocalISO());
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'BANK_TRANSFER' | 'BANK_DEPOSIT' | 'CHECK' | 'OTHER'>('BANK_TRANSFER');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState('');
+  const [nextInstallmentInfo, setNextInstallmentInfo] = useState<{ number: number; dueDate: string; payment: string } | null>(null);
+  const [payoffTotal, setPayoffTotal] = useState<string | null>(null);
+
+  // Acceso al portal del cliente
+  const [portalAccessInfo, setPortalAccessInfo] = useState<{ loanCode: string; email: string; temporaryPassword: string } | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [paymentKind, setPaymentKind] = useState<'INSTALLMENT' | 'PRINCIPAL_PREPAYMENT' | 'PAYOFF'>('INSTALLMENT');
   const [prepayPolicy, setPrepayPolicy] = useState<'REDUCE_TERM' | 'REDUCE_INSTALLMENT'>('REDUCE_TERM');
   const [paymentSuccessMsg, setPaymentSuccessMsg] = useState<string | null>(null);
@@ -71,7 +90,7 @@ export const AdminDashboardPage: React.FC = () => {
   const [leadStatus, setLeadStatus] = useState<string>('NEW');
   const [leadNotes, setLeadNotes] = useState<string>('');
   const [leadTermMonths, setLeadTermMonths] = useState<number>(36);
-  const [leadDownPayment, setLeadDownPayment] = useState<number>(3000);
+  const [leadDownPayment, setLeadDownPayment] = useState<number>(0);
   const [leadVehicleId, setLeadVehicleId] = useState<string>('');
   const [leadSaving, setLeadSaving] = useState<boolean>(false);
   const [leadSaveSuccess, setLeadSaveSuccess] = useState<string | null>(null);
@@ -82,9 +101,9 @@ export const AdminDashboardPage: React.FC = () => {
   // Campos de Formalización a Crédito Activo
   const [leadDui, setLeadDui] = useState<string>('');
   const [leadNit, setLeadNit] = useState<string>('');
-  const [leadAddress, setLeadAddress] = useState<string>('San Salvador, El Salvador');
-  const [leadEconomicActivity, setLeadEconomicActivity] = useState<string>('Empleado / Profesional');
-  const [leadMonthlyIncome, setLeadMonthlyIncome] = useState<number>(1800);
+  const [leadAddress, setLeadAddress] = useState<string>('');
+  const [leadEconomicActivity, setLeadEconomicActivity] = useState<string>('');
+  const [leadMonthlyIncome, setLeadMonthlyIncome] = useState<number>(0);
 
   // 5 Documentos obligatorios para activar crédito
   const [duiDoc, setDuiDoc] = useState<UploadedDocState | null>(null);
@@ -111,7 +130,7 @@ export const AdminDashboardPage: React.FC = () => {
   const [expSubcategory, setExpSubcategory] = useState<string>('');
   const [expQuantity, setExpQuantity] = useState<number>(1);
   const [expUnitPrice, setExpUnitPrice] = useState<number>(0);
-  const [expExpenseDate, setExpExpenseDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [expExpenseDate, setExpExpenseDate] = useState<string>(todayLocalISO());
   const [expProvider, setExpProvider] = useState<string>('');
   const [expInvoiceNumber, setExpInvoiceNumber] = useState<string>('');
   const [expPaymentMethod, setExpPaymentMethod] = useState<string>('TRANSFER');
@@ -130,228 +149,42 @@ export const AdminDashboardPage: React.FC = () => {
   const [deleteExpenseId, setDeleteExpenseId] = useState<string | null>(null);
   const [deletingExpense, setDeletingExpense] = useState<boolean>(false);
 
-  const user = JSON.parse(localStorage.getItem('veltor_user') || '{}');
+  const user = getUser();
 
   useEffect(() => {
     loadData();
   }, []);
 
-  // Datos iniciales de demostración para control de gastos
-  const defaultInitialExpenses = useMemo(
-    () => [
-      {
-        id: 'exp-1',
-        code: 'GST-2026-0001',
-        concept: 'Kit de 4 Llantas Michelin 215/55 R17',
-        categoryType: 'PRODUCT',
-        subcategory: 'Repuestos e Insumos',
-        amount: 480.0,
-        quantity: 4,
-        unitPrice: 120.0,
-        expenseDate: '2026-10-15',
-        provider: 'Distribuidora Automotriz Salvadoreña S.A.',
-        invoiceNumber: 'FAC-001294',
-        paymentMethod: 'TRANSFER',
-        status: 'PAID',
-        notes: 'Equipamiento para vehículo en inventario Toyota Corolla',
-      },
-      {
-        id: 'exp-2',
-        code: 'GST-2026-0002',
-        concept: 'Mantenimiento Preventivo y Cambio de Fluidos',
-        categoryType: 'SERVICE',
-        subcategory: 'Mantenimiento y Reparación',
-        amount: 175.0,
-        quantity: 1,
-        unitPrice: 175.0,
-        expenseDate: '2026-10-18',
-        provider: 'Taller Especializado AutoPro El Salvador',
-        invoiceNumber: 'CCF-88421',
-        paymentMethod: 'CARD',
-        status: 'PAID',
-        notes: 'Servicio integral de afinado y cambio de aceite sintético',
-      },
-      {
-        id: 'exp-3',
-        code: 'GST-2026-0003',
-        concept: 'Baterías Automotrices 12V 65Ah',
-        categoryType: 'PRODUCT',
-        subcategory: 'Repuestos e Insumos',
-        amount: 230.0,
-        quantity: 2,
-        unitPrice: 115.0,
-        expenseDate: '2026-10-20',
-        provider: 'Acumuladores y Baterías de C.A.',
-        invoiceNumber: 'FAC-55201',
-        paymentMethod: 'TRANSFER',
-        status: 'PAID',
-        notes: 'Stock para reemplazo de vehículos recibidos',
-      },
-      {
-        id: 'exp-4',
-        code: 'GST-2026-0004',
-        concept: 'Servicio de Valúo y Peritaje Mecánico Legal',
-        categoryType: 'SERVICE',
-        subcategory: 'Servicios Profesionales',
-        amount: 150.0,
-        quantity: 2,
-        unitPrice: 75.0,
-        expenseDate: '2026-10-24',
-        provider: 'Peritajes y Avalúos Técnicos SV',
-        invoiceNumber: 'CCF-09142',
-        paymentMethod: 'TRANSFER',
-        status: 'PAID',
-        notes: 'Certificación técnica de 2 unidades para apertura de crédito',
-      },
-      {
-        id: 'exp-5',
-        code: 'GST-2026-0005',
-        concept: 'Póliza de Seguro de Flota y Responsabilidad Civil',
-        categoryType: 'SERVICE',
-        subcategory: 'Seguros y Fianzas',
-        amount: 620.0,
-        quantity: 1,
-        unitPrice: 620.0,
-        expenseDate: '2026-10-26',
-        provider: 'Aseguradora del Pacífico S.A.',
-        invoiceNumber: 'POL-2026-99',
-        paymentMethod: 'TRANSFER',
-        status: 'PENDING',
-        notes: 'Cuota mensual de cobertura para flota vehicular',
-      },
-    ],
-    [],
-  );
-
-  // Contabilización matemática local de gastos
-  const computeExpensesSummary = (list: any[]) => {
-    let totalAmount = 0;
-    let productsTotal = 0;
-    let servicesTotal = 0;
-    let currentMonthTotal = 0;
-    let paidTotal = 0;
-    let pendingTotal = 0;
-    let productsCount = 0;
-    let servicesCount = 0;
-
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-
-    for (const item of list) {
-      const amt = Number(item.amount || 0);
-      totalAmount += amt;
-      if (item.categoryType === 'PRODUCT') {
-        productsTotal += amt;
-        productsCount++;
-      } else {
-        servicesTotal += amt;
-        servicesCount++;
-      }
-
-      if (item.status === 'PAID') {
-        paidTotal += amt;
-      } else if (item.status === 'PENDING') {
-        pendingTotal += amt;
-      }
-
-      const d = new Date(item.expenseDate);
-      if (!isNaN(d.getTime()) && d.getFullYear() === currentYear && d.getMonth() === currentMonth) {
-        currentMonthTotal += amt;
-      }
-    }
-
-    return {
-      totalAmount: totalAmount.toFixed(2),
-      productsTotal: productsTotal.toFixed(2),
-      servicesTotal: servicesTotal.toFixed(2),
-      currentMonthTotal: currentMonthTotal.toFixed(2),
-      paidTotal: paidTotal.toFixed(2),
-      pendingTotal: pendingTotal.toFixed(2),
-      totalCount: list.length,
-      productsCount,
-      servicesCount,
-    };
+  const loadExpenses = async () => {
+    const [expList, expSum] = await Promise.all([api.getExpenses(), api.getExpensesSummary()]);
+    setExpenses(expList || []);
+    setExpensesSummary(expSum);
   };
 
   const loadData = async () => {
-    try {
-      const [m, ld, ln, vh, expList, expSum] = await Promise.all([
-        api.getDashboardMetrics().catch(() => null),
-        api.getLeads().catch(() => []),
-        api.getLoansSummary().catch(() => []),
-        api.getVehicles().catch(() => ({ items: [] })),
-        api.getExpenses().catch(() => []),
-        api.getExpensesSummary().catch(() => null),
-      ]);
+    setLoadError(null);
+    const results = await Promise.allSettled([
+      api.getDashboardMetrics(),
+      api.getLeads(),
+      api.getLoansSummary(),
+      api.getAllVehiclesAdmin(),
+      loadExpenses(),
+    ]);
+    const [m, ld, ln, vh] = results;
+    if (m.status === 'fulfilled') setMetrics(m.value);
+    if (ld.status === 'fulfilled') setLeads(ld.value || []);
+    if (ln.status === 'fulfilled') setLoans(ln.value || []);
+    if (vh.status === 'fulfilled') setVehicles(vh.value || []);
 
-      setMetrics(
-        m || {
-          vehicles: { available: 4, reserved: 1, sold: 12, total: 17 },
-          commercial: { pendingLeads: 3, activeCustomers: 24 },
-          financial: { activeLoans: 18, activePortfolio: '184500.00', monthCollections: '14230.50' },
-        },
-      );
-      setLeads(
-        ld?.length > 0
-          ? ld
-          : [
-              {
-                id: 'lead-1',
-                code: 'PROS-2026-0001',
-                fullName: 'María Elena Salazar',
-                phone: '7921-3344',
-                email: 'maria.salazar@example.com',
-                status: 'NEW',
-                message: 'Interés en Honda CR-V con prima de $5,000 a 48 meses.',
-                createdAt: new Date().toISOString(),
-                vehicle: { brand: 'Honda', model: 'CR-V', salePrice: 28500 },
-              },
-              {
-                id: 'lead-2',
-                code: 'PROS-2026-0002',
-                fullName: 'Jorge Alberto Benítez',
-                phone: '7112-9988',
-                email: 'jorge.benitez@example.com',
-                status: 'CONTACTED',
-                message: 'Consulta sobre Toyota Corolla con financiamiento a 36 meses.',
-                createdAt: new Date().toISOString(),
-                vehicle: { brand: 'Toyota', model: 'Corolla', salePrice: 19800 },
-              },
-            ],
-      );
-      setLoans(
-        ln?.length > 0
-          ? ln
-          : [
-              {
-                id: 'loan-1',
-                code: 'CRE-2026-0001',
-                originalPrincipal: 16000.0,
-                currentPrincipalBalance: 14850.25,
-                monthlyRate: 0.015,
-                termCount: 36,
-                status: 'ACTIVE',
-                customer: { fullName: 'Alejandro Morales Rivera', dui: '04829104-5', phone: '7744-8899' },
-                vehicle: { brand: 'Toyota', model: 'Corolla LE', year: 2023 },
-              },
-            ],
-      );
-      setVehicles(vh?.items || []);
-
-      const finalExpenses = expList?.length > 0 ? expList : defaultInitialExpenses;
-      setExpenses(finalExpenses);
-      setExpensesSummary(expSum || computeExpensesSummary(finalExpenses));
-
-      api.getPublicSettings().then((s) => {
-        if (s?.preferentialMonthlyRate) {
-          setAdminMonthlyRate(Number(s.preferentialMonthlyRate) * 100);
-        }
-      }).catch(() => {});
-    } catch {
-      // Data loaded
-    }
+    const failed = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
+    if (failed) setLoadError(failed.reason?.message || 'No fue posible cargar toda la información del panel.');
   };
+
+  useEffect(() => {
+    if (publicSettings?.preferentialMonthlyRate) {
+      setAdminMonthlyRate(Number((publicSettings.preferentialMonthlyRate * 100).toFixed(4)));
+    }
+  }, [publicSettings?.preferentialMonthlyRate]);
 
   // Manejo de Modal y Formulario de Gastos
   const handleOpenExpenseModal = (expense?: any) => {
@@ -364,7 +197,7 @@ export const AdminDashboardPage: React.FC = () => {
       setExpSubcategory(expense.subcategory || '');
       setExpQuantity(Number(expense.quantity) || 1);
       setExpUnitPrice(Number(expense.unitPrice) || 0);
-      setExpExpenseDate(expense.expenseDate || new Date().toISOString().split('T')[0]);
+      setExpExpenseDate(expense.expenseDate || todayLocalISO());
       setExpProvider(expense.provider || '');
       setExpInvoiceNumber(expense.invoiceNumber || '');
       setExpPaymentMethod(expense.paymentMethod || 'TRANSFER');
@@ -377,7 +210,7 @@ export const AdminDashboardPage: React.FC = () => {
       setExpSubcategory('Repuestos e Insumos');
       setExpQuantity(1);
       setExpUnitPrice(0);
-      setExpExpenseDate(new Date().toISOString().split('T')[0]);
+      setExpExpenseDate(todayLocalISO());
       setExpProvider('');
       setExpInvoiceNumber('');
       setExpPaymentMethod('TRANSFER');
@@ -423,64 +256,20 @@ export const AdminDashboardPage: React.FC = () => {
 
     try {
       if (selectedExpense) {
-        const res = await api.updateExpense(selectedExpense.id, payload);
-        const updatedRecord = res?.id ? res : { ...selectedExpense, ...payload };
-        setExpenses((prev) => {
-          const updated = prev.map((item) => (item.id === selectedExpense.id ? updatedRecord : item));
-          setExpensesSummary(computeExpensesSummary(updated));
-          return updated;
-        });
+        await api.updateExpense(selectedExpense.id, payload);
         setExpFeedback('Gasto actualizado exitosamente en la contabilidad.');
       } else {
-        const res = await api.createExpense(payload);
-        const newRecord = res?.id
-          ? res
-          : {
-              id: `exp-${Date.now()}`,
-              code: `GST-2026-${Math.floor(Math.random() * 9000) + 1000}`,
-              ...payload,
-              createdAt: new Date().toISOString(),
-            };
-        setExpenses((prev) => {
-          const updated = [newRecord, ...prev];
-          setExpensesSummary(computeExpensesSummary(updated));
-          return updated;
-        });
+        await api.createExpense(payload);
         setExpFeedback('Nuevo gasto registrado y contabilizado exitosamente.');
       }
+      await loadExpenses();
 
       setTimeout(() => {
         setExpenseModalOpen(false);
         setExpFeedback(null);
-      }, 1500);
-    } catch {
-      // Fallback local seguro
-      if (selectedExpense) {
-        setExpenses((prev) => {
-          const updated = prev.map((item) => (item.id === selectedExpense.id ? { ...item, ...payload } : item));
-          setExpensesSummary(computeExpensesSummary(updated));
-          return updated;
-        });
-        setExpFeedback('Gasto actualizado en la contabilidad.');
-      } else {
-        const newRecord = {
-          id: `exp-${Date.now()}`,
-          code: `GST-2026-${Math.floor(Math.random() * 9000) + 1000}`,
-          ...payload,
-          createdAt: new Date().toISOString(),
-        };
-        setExpenses((prev) => {
-          const updated = [newRecord, ...prev];
-          setExpensesSummary(computeExpensesSummary(updated));
-          return updated;
-        });
-        setExpFeedback('Gasto registrado y contabilizado en el sistema.');
-      }
-
-      setTimeout(() => {
-        setExpenseModalOpen(false);
-        setExpFeedback(null);
-      }, 1500);
+      }, 1200);
+    } catch (err: any) {
+      setExpError(err.message || 'No se pudo guardar el gasto.');
     } finally {
       setExpSaving(false);
     }
@@ -490,67 +279,125 @@ export const AdminDashboardPage: React.FC = () => {
     setDeletingExpense(true);
     try {
       await api.deleteExpense(id);
-    } catch {
-      // Fallback local
+      await loadExpenses();
+      setDeleteExpenseId(null);
+    } catch (err: any) {
+      setActionError(err.message || 'No se pudo eliminar el gasto.');
+      setDeleteExpenseId(null);
+    } finally {
+      setDeletingExpense(false);
     }
-    setExpenses((prev) => {
-      const updated = prev.filter((item) => item.id !== id);
-      setExpensesSummary(computeExpensesSummary(updated));
-      return updated;
-    });
-    setDeleteExpenseId(null);
-    setDeletingExpense(false);
   };
 
   const handleSaveRate = async () => {
     setRateUpdating(true);
     setRateFeedback(null);
+    setRateError(null);
     try {
       const res = await api.updatePreferentialRate(adminMonthlyRate / 100);
-      setRateFeedback(res?.message || `Tasa preferencial actualizada exitosamente a ${adminMonthlyRate.toFixed(2)}% mensual.`);
+      setRateFeedback(res?.message || `Tasa preferencial actualizada a ${adminMonthlyRate.toFixed(2)}% mensual.`);
+      refetchSettings();
       setTimeout(() => setRateFeedback(null), 5000);
-    } catch {
-      setRateFeedback(`Tasa preferencial actualizada a ${adminMonthlyRate.toFixed(2)}% mensual.`);
-      setTimeout(() => setRateFeedback(null), 5000);
+    } catch (err: any) {
+      setRateError(err.message || 'No se pudo actualizar la tasa.');
     } finally {
       setRateUpdating(false);
     }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('veltor_token');
-    localStorage.removeItem('veltor_user');
+    clearSession();
     navigate('/login');
+  };
+
+  const openPdf = async (kind: 'schedule' | 'statement', loanId: string) => {
+    setActionError(null);
+    try {
+      if (kind === 'schedule') await api.openLoanSchedulePdf(loanId);
+      else await api.openLoanStatementPdf(loanId);
+    } catch (err: any) {
+      setActionError(err.message || 'No se pudo generar el PDF.');
+    }
+  };
+
+  const handleGrantPortalAccess = async (loan: any) => {
+    if (!loan.customer?.id) return;
+    const verb = 'habilitar o restablecer';
+    if (!window.confirm(`¿Deseas ${verb} el acceso al portal para ${loan.customer.fullName}? Se generará una nueva contraseña temporal.`)) return;
+    setActionError(null);
+    try {
+      const res = await api.grantPortalAccess(loan.customer.id);
+      setPortalAccessInfo({ loanCode: loan.code, email: res.email, temporaryPassword: res.temporaryPassword });
+    } catch (err: any) {
+      setActionError(err.message || 'No se pudo habilitar el acceso al portal.');
+    }
+  };
+
+  // Abrir modal de pago con la próxima cuota y la cotización de cancelación del motor financiero
+  const openPaymentModal = async (loan: any) => {
+    setSelectedLoan(loan);
+    setPaymentKind('INSTALLMENT');
+    setPrepayPolicy('REDUCE_TERM');
+    setPaymentAmount('');
+    setPaymentDate(todayLocalISO());
+    setPaymentMethod('BANK_TRANSFER');
+    setPaymentReference('');
+    setPaymentError(null);
+    setPaymentSuccessMsg(null);
+    setNextInstallmentInfo(null);
+    setPayoffTotal(null);
+    setPaymentIdempotencyKey(crypto.randomUUID());
+    setPaymentModalOpen(true);
+
+    try {
+      const [ledger, quote] = await Promise.all([api.getLoanLedger(loan.id), api.getPayoffQuote(loan.id)]);
+      const next = ledger?.snapshot?.current?.installments?.find((i: any) => i.status !== 'PAID');
+      if (next) {
+        setNextInstallmentInfo({ number: next.number, dueDate: next.dueDate, payment: next.payment });
+        setPaymentAmount(next.payment);
+      }
+      if (quote?.total) setPayoffTotal(quote.total);
+    } catch {
+      // Si falla la consulta el cajero ingresa el monto manualmente
+    }
   };
 
   const handleRegisterPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedLoan) return;
+    if (!(Number(paymentAmount) > 0)) {
+      setPaymentError('Ingrese un monto mayor a cero.');
+      return;
+    }
 
+    setPaymentSubmitting(true);
+    setPaymentError(null);
     try {
-      const today = new Date().toISOString().split('T')[0];
       const res = await api.registerPayment({
         loanId: selectedLoan.id,
-        amount: paymentAmount,
-        effectiveDate: today,
+        amount: Number(paymentAmount).toFixed(2),
+        effectiveDate: paymentDate,
         kind: paymentKind,
         policy: paymentKind === 'PRINCIPAL_PREPAYMENT' ? prepayPolicy : undefined,
-        paymentMethod: 'BANK_TRANSFER',
-        idempotencyKey: `pay-${Date.now()}`,
+        paymentMethod,
+        referenceNumber: paymentReference.trim() || undefined,
+        idempotencyKey: paymentIdempotencyKey,
       });
 
-      setPaymentSuccessMsg(`Pago aplicado exitosamente. Saldo actualizado: ${formatUSD(res.newPrincipalBalance || '14271.82')}`);
+      setPaymentSuccessMsg(
+        res.isDuplicate
+          ? 'Este pago ya había sido registrado.'
+          : `Pago ${res.payment?.code} aplicado. Nuevo saldo de capital: ${formatUSD(res.newPrincipalBalance)}`,
+      );
+      loadData();
       setTimeout(() => {
         setPaymentModalOpen(false);
         setPaymentSuccessMsg(null);
-        loadData();
-      }, 2000);
-    } catch {
-      setPaymentSuccessMsg(`Pago procesado en modo simulado. Saldo amortizado.`);
-      setTimeout(() => {
-        setPaymentModalOpen(false);
-        setPaymentSuccessMsg(null);
-      }, 2000);
+      }, 2500);
+    } catch (err: any) {
+      setPaymentError(err.message || 'No se pudo registrar el pago.');
+    } finally {
+      setPaymentSubmitting(false);
     }
   };
 
@@ -563,25 +410,21 @@ export const AdminDashboardPage: React.FC = () => {
     setLeadEmail(lead.email || '');
     setLeadStatus(lead.status || 'NEW');
     setLeadNotes(lead.internalNotes || lead.message || '');
-    setLeadTermMonths(lead.termMonths || 36);
+    setLeadTermMonths(lead.termMonths || publicSettings?.defaultTermMonths || 36);
     setLeadDownPayment(
       lead.estimatedDown !== undefined && lead.estimatedDown !== null
         ? Number(lead.estimatedDown)
-        : lead.vehicle?.salePrice
-        ? Math.round(Number(lead.vehicle.salePrice) * 0.15)
-        : 3000,
+        : lead.vehicle
+        ? suggestedDownPayment(lead.vehicle, publicSettings)
+        : 0,
     );
     setLeadVehicleId(lead.vehicleId || lead.vehicle?.id || '');
-    setLeadMonthlyRate(
-      lead.monthlyRate !== undefined && lead.monthlyRate !== null
-        ? Number(lead.monthlyRate) * 100
-        : adminMonthlyRate,
-    );
+    setLeadMonthlyRate(adminMonthlyRate);
     setLeadDui('');
     setLeadNit('');
-    setLeadAddress('San Salvador, El Salvador');
-    setLeadEconomicActivity('Empleado / Profesional');
-    setLeadMonthlyIncome(1800);
+    setLeadAddress('');
+    setLeadEconomicActivity('');
+    setLeadMonthlyIncome(0);
 
     // Reset de documentos
     setDuiDoc(null);
@@ -618,9 +461,8 @@ export const AdminDashboardPage: React.FC = () => {
       setLeadSaveSuccess('Prospecto actualizado exitosamente.');
       loadData();
       setTimeout(() => setLeadSaveSuccess(null), 3000);
-    } catch {
-      setLeadSaveSuccess('Cambios guardados localmente.');
-      setTimeout(() => setLeadSaveSuccess(null), 3000);
+    } catch (err: any) {
+      setConversionErrorMsg(err.message || 'No se pudieron guardar los cambios del prospecto.');
     } finally {
       setLeadSaving(false);
     }
@@ -657,6 +499,15 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
+  // Plazos permitidos por el producto financiero (en múltiplos de 12 meses, más el plazo actual)
+  const termOptions = useMemo(() => {
+    const min = publicSettings?.minTermMonths ?? 12;
+    const max = publicSettings?.maxTermMonths ?? 72;
+    const opts = new Set<number>([min, max, leadTermMonths]);
+    for (let t = Math.ceil(min / 12) * 12; t <= max; t += 12) opts.add(t);
+    return [...opts].filter((t) => t >= min && t <= max).sort((a, b) => a - b);
+  }, [publicSettings?.minTermMonths, publicSettings?.maxTermMonths, leadTermMonths]);
+
   const uploadedDocsCount = [duiDoc, nitDoc, licenseDoc, incomeDoc, utilityDoc].filter(Boolean).length;
 
   // Formalizar Prospecto a Crédito Activo con Tasa Parametrizada por Cliente
@@ -677,6 +528,16 @@ export const AdminDashboardPage: React.FC = () => {
       setConversionErrorMsg(
         'El NIT debe tener un formato salvadoreño válido: homologado a DUI (00000000-0) o tradicional de 14 dígitos (0000-000000-000-0).',
       );
+      return;
+    }
+
+    if (!leadVehicleId) {
+      setConversionErrorMsg('Selecciona el vehículo a financiar en la pestaña de información del prospecto.');
+      return;
+    }
+
+    if (!leadAddress.trim() || !leadEconomicActivity.trim() || !(leadMonthlyIncome > 0)) {
+      setConversionErrorMsg('Completa la dirección, actividad económica e ingreso mensual del cliente.');
       return;
     }
 
@@ -702,10 +563,10 @@ export const AdminDashboardPage: React.FC = () => {
       const res = await api.convertLeadToLoan(selectedLead.id, {
         dui: leadDui,
         nit: leadNit,
-        address: leadAddress,
-        economicActivity: leadEconomicActivity,
+        address: leadAddress.trim(),
+        economicActivity: leadEconomicActivity.trim(),
         monthlyIncome: leadMonthlyIncome,
-        vehicleId: leadVehicleId || selectedLead.vehicleId || selectedLead.vehicle?.id,
+        vehicleId: leadVehicleId,
         downPayment: leadDownPayment,
         termMonths: leadTermMonths,
         monthlyRate: leadMonthlyRate / 100,
@@ -713,32 +574,11 @@ export const AdminDashboardPage: React.FC = () => {
       });
 
       setConversionSuccessMsg(
-        res?.message || `¡Crédito formalizado y activado con éxito! Expediente completo generado con tasa de ${leadMonthlyRate.toFixed(2)}% mensual.`,
+        `${res.message} Cuota nivelada: ${formatUSD(res.levelPayment)} a ${leadTermMonths} meses (${leadMonthlyRate.toFixed(2)}% mensual).`,
       );
       loadData();
-    } catch {
-      // Modo autónomo / fallback: agregar crédito formalizado con la tasa personalizada
-      const vehiclePrice = Number(selectedLead.vehicle?.salePrice || 20000);
-      const principal = Math.max(100, vehiclePrice - leadDownPayment);
-      const i = leadMonthlyRate / 100;
-      const n = leadTermMonths || 36;
-      const cuota = i === 0 ? principal / n : (principal * i) / (1 - Math.pow(1 + i, -n));
-      const simulatedLoan = {
-        id: `loan-${Date.now()}`,
-        code: `CRE-2026-${Math.floor(Math.random() * 9000) + 1000}`,
-        originalPrincipal: principal,
-        currentPrincipalBalance: principal,
-        monthlyRate: i,
-        termCount: n,
-        status: 'ACTIVE',
-        customer: { fullName: leadFullName || selectedLead.fullName, dui: leadDui, phone: leadPhone },
-        vehicle: selectedLead.vehicle || { brand: 'Vehículo', model: 'Aprobado', year: 2024 },
-      };
-      setLoans((prev) => [simulatedLoan, ...prev]);
-      setConversionSuccessMsg(
-        `¡Crédito formalizado y activado con éxito! Expediente generado con tasa de ${leadMonthlyRate.toFixed(2)}% mensual (${(leadMonthlyRate * 12).toFixed(1)}% anual). Cuota nivelada calculada: ${formatUSD(cuota)}.`,
-      );
-      loadData();
+    } catch (err: any) {
+      setConversionErrorMsg(err.message || 'No se pudo formalizar el crédito.');
     } finally {
       setConvertingLoading(false);
     }
@@ -756,7 +596,7 @@ export const AdminDashboardPage: React.FC = () => {
             Panel de Operaciones Financieras
           </h1>
           <p className="text-xs text-slate-400">
-            Sesión activa: <span className="text-slate-200 font-semibold">{user.fullName || 'Administrador'}</span> ({user.role || 'SUPERADMIN'})
+            Sesión activa: <span className="text-slate-200 font-semibold">{user?.fullName}</span> ({user?.role})
           </p>
         </div>
 
@@ -772,7 +612,7 @@ export const AdminDashboardPage: React.FC = () => {
       </div>
 
       {/* Pestañas de Navegación del Panel */}
-      <div className="flex items-center gap-6 border-b border-slate-800 text-sm font-semibold">
+      <div className="flex items-center gap-6 border-b border-slate-800 text-sm font-semibold overflow-x-auto whitespace-nowrap">
         <button
           onClick={() => setActiveTab('overview')}
           className={`pb-3 border-b-2 transition-all cursor-pointer ${
@@ -807,6 +647,20 @@ export const AdminDashboardPage: React.FC = () => {
           {SECTIONS.loans}
         </button>
         <button
+          onClick={() => setActiveTab('vehicles')}
+          className={`pb-3 border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+            activeTab === 'vehicles'
+              ? 'border-white text-white'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Car className="w-3.5 h-3.5 text-slate-300" />
+          <span>Vehículos</span>
+          <span className="px-1.5 py-0.5 rounded-full bg-slate-800 text-[10px] text-slate-300 font-mono">
+            {vehicles.length}
+          </span>
+        </button>
+        <button
           onClick={() => setActiveTab('expenses')}
           className={`pb-3 border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === 'expenses'
@@ -832,6 +686,24 @@ export const AdminDashboardPage: React.FC = () => {
           <span>Parámetros y Tasas</span>
         </button>
       </div>
+
+      {(loadError || actionError) && (
+        <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center justify-between gap-3">
+          <span className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            {actionError || loadError}
+          </span>
+          <button
+            onClick={() => {
+              setActionError(null);
+              if (loadError) loadData();
+            }}
+            className="text-rose-200 hover:text-white font-semibold cursor-pointer"
+          >
+            {actionError ? 'Cerrar' : 'Reintentar'}
+          </button>
+        </div>
+      )}
 
       {/* Tarjetas de Métricas en Vivo */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -867,7 +739,7 @@ export const AdminDashboardPage: React.FC = () => {
             <Users className="w-4 h-4 text-slate-300" />
           </div>
           <div className="text-2xl font-black text-white">
-            {metrics?.commercial?.pendingLeads || leads.length}
+            {metrics?.commercial?.pendingLeads ?? 0}
           </div>
           <p className="text-[11px] text-slate-400">
             Solicitudes pendientes de contacto
@@ -889,6 +761,8 @@ export const AdminDashboardPage: React.FC = () => {
       </div>
 
       {/* Contenido según pestaña */}
+      {activeTab === 'vehicles' && <AdminVehiclesTab vehicles={vehicles} onChanged={loadData} />}
+
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Últimos Prospectos */}
@@ -985,17 +859,15 @@ export const AdminDashboardPage: React.FC = () => {
                     <div className="text-right">
                       <span className="text-[10px] text-slate-400 block">Tasa Mensual</span>
                       <span className="font-bold text-slate-300 font-mono">
-                        {(ln.monthlyRate * 100).toFixed(2)}%
+                        {(Number(ln.monthlyRate) * 100).toFixed(2)}%
                       </span>
                     </div>
                   </div>
 
                   <button
-                    onClick={() => {
-                      setSelectedLoan(ln);
-                      setPaymentModalOpen(true);
-                    }}
-                    className="w-full py-2 rounded-lg bg-slate-100 hover:bg-white text-slate-900 font-bold text-xs uppercase tracking-wider transition-colors shadow cursor-pointer"
+                    disabled={ln.status !== 'ACTIVE'}
+                    onClick={() => openPaymentModal(ln)}
+                    className="w-full py-2 rounded-lg bg-slate-100 hover:bg-white text-slate-900 font-bold text-xs uppercase tracking-wider transition-colors shadow cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Registrar Pago o Abono
                   </button>
@@ -1098,7 +970,32 @@ export const AdminDashboardPage: React.FC = () => {
             </div>
           </div>
 
+          {portalAccessInfo && (
+            <div className="p-4 rounded-xl bg-sky-500/10 border border-sky-500/30 text-xs text-sky-100 space-y-1">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="font-bold">Acceso al portal habilitado ({portalAccessInfo.loanCode})</p>
+                  <p>
+                    Usuario: <span className="font-mono">{portalAccessInfo.email}</span>
+                  </p>
+                  <p>
+                    Contraseña temporal: <span className="font-mono font-bold select-all">{portalAccessInfo.temporaryPassword}</span>
+                  </p>
+                  <p className="text-sky-300/80">Entrégala al cliente por un canal seguro. Se mostrará solo esta vez y se le pedirá cambiarla al ingresar.</p>
+                </div>
+                <button onClick={() => setPortalAccessInfo(null)} className="text-sky-300 hover:text-white cursor-pointer">
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-4">
+            {loans.length === 0 && (
+              <p className="text-center text-xs text-slate-400 py-10">
+                Aún no hay créditos formalizados. Se crean al activar un prospecto con su expediente completo.
+              </p>
+            )}
             {loans.map((ln) => (
               <div
                 key={ln.id}
@@ -1111,7 +1008,10 @@ export const AdminDashboardPage: React.FC = () => {
                       {ln.status}
                     </span>
                   </div>
-                  <p className="text-sm font-bold text-slate-200">{ln.customer.fullName} · DUI: {ln.customer.dui}</p>
+                  <p className="text-sm font-bold text-slate-200">
+                    {ln.customer.fullName}
+                    {ln.customer.dui ? ` · DUI: ${ln.customer.dui}` : ''}
+                  </p>
                   <p className="text-xs text-slate-400">
                     Garantía: {ln.vehicle.brand} {ln.vehicle.model} ({ln.vehicle.year}) · Plazo: {ln.termCount} meses
                   </p>
@@ -1133,14 +1033,14 @@ export const AdminDashboardPage: React.FC = () => {
                   <div>
                     <span className="text-slate-400 block font-semibold">Tasa Mensual</span>
                     <span className="font-mono font-bold text-white text-sm">
-                      {(ln.monthlyRate * 100).toFixed(2)}%
+                      {(Number(ln.monthlyRate) * 100).toFixed(2)}%
                     </span>
                   </div>
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center gap-2">
                   <button
-                    onClick={() => window.open(api.getLoanSchedulePdfUrl(ln.id || ln.code), '_blank')}
+                    onClick={() => openPdf('schedule', ln.id)}
                     className="w-full sm:w-auto p-2.5 rounded-xl bg-slate-700/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-colors flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer"
                     title="Descargar Tabla de Amortización Oficial en PDF"
                   >
@@ -1148,7 +1048,7 @@ export const AdminDashboardPage: React.FC = () => {
                     <span>Amortización PDF</span>
                   </button>
                   <button
-                    onClick={() => window.open(api.getLoanStatementPdfUrl(ln.id || ln.code), '_blank')}
+                    onClick={() => openPdf('statement', ln.id)}
                     className="w-full sm:w-auto p-2.5 rounded-xl bg-slate-700/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-colors flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer"
                     title="Descargar Estado de Cuenta Oficial en PDF"
                   >
@@ -1156,11 +1056,17 @@ export const AdminDashboardPage: React.FC = () => {
                     <span>Estado Cuenta PDF</span>
                   </button>
                   <button
-                    onClick={() => {
-                      setSelectedLoan(ln);
-                      setPaymentModalOpen(true);
-                    }}
-                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-white text-slate-900 font-bold text-xs uppercase tracking-wider transition-colors shadow flex items-center justify-center gap-1.5 cursor-pointer"
+                    onClick={() => handleGrantPortalAccess(ln)}
+                    className="w-full sm:w-auto p-2.5 rounded-xl bg-slate-700/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-colors flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer"
+                    title="Crear o restablecer el acceso del cliente al portal"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 text-sky-300" />
+                    <span>Acceso al portal</span>
+                  </button>
+                  <button
+                    disabled={ln.status !== 'ACTIVE'}
+                    onClick={() => openPaymentModal(ln)}
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-white text-slate-900 font-bold text-xs uppercase tracking-wider transition-colors shadow flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Registrar Pago / Abono
                   </button>
@@ -1190,6 +1096,12 @@ export const AdminDashboardPage: React.FC = () => {
             <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-3 text-emerald-400 text-xs font-semibold">
               <CheckCircle2 className="w-5 h-5 shrink-0" />
               <span>{rateFeedback}</span>
+            </div>
+          )}
+          {rateError && (
+            <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center gap-3 text-rose-300 text-xs font-semibold">
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              <span>{rateError}</span>
             </div>
           )}
 
@@ -1536,7 +1448,7 @@ export const AdminDashboardPage: React.FC = () => {
                         {/* Código y Fecha */}
                         <td className="py-4 px-4 sm:px-6 font-mono">
                           <span className="font-bold text-slate-200 block text-xs">
-                            {exp.code || 'GST-2026-XXXX'}
+                            {exp.code}
                           </span>
                           <span className="text-[11px] text-slate-400">
                             {exp.expenseDate ? formatDateSV(exp.expenseDate) : 'Fecha N/D'}
@@ -1804,11 +1716,13 @@ export const AdminDashboardPage: React.FC = () => {
                       className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white outline-none focus:border-white"
                     >
                       <option value="">Seleccionar vehículo...</option>
-                      {vehicles.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.brand} {v.model} ({v.year}) - {formatUSD(v.salePrice)}
-                        </option>
-                      ))}
+                      {vehicles
+                        .filter((v) => v.status === 'AVAILABLE' || v.status === 'RESERVED' || v.id === leadVehicleId)
+                        .map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.code} · {v.brand} {v.model} ({v.year}) - {formatUSD(v.salePrice)}
+                          </option>
+                        ))}
                     </select>
                   </div>
                   <div>
@@ -1992,11 +1906,11 @@ export const AdminDashboardPage: React.FC = () => {
                             onChange={(e) => setLeadTermMonths(Number(e.target.value))}
                             className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono text-xs outline-none focus:border-white"
                           >
-                            <option value={12}>12 meses (1 año)</option>
-                            <option value={24}>24 meses (2 años)</option>
-                            <option value={36}>36 meses (3 años)</option>
-                            <option value={48}>48 meses (4 años)</option>
-                            <option value={60}>60 meses (5 años)</option>
+                            {termOptions.map((t) => (
+                              <option key={t} value={t}>
+                                {t} meses
+                              </option>
+                            ))}
                           </select>
                           <div className="flex gap-1.5 pt-1">
                             {[24, 36, 48, 60].map((t) => (
@@ -2129,7 +2043,8 @@ export const AdminDashboardPage: React.FC = () => {
                         <input
                           type="number"
                           required
-                          value={leadMonthlyIncome}
+                          min={1}
+                          value={leadMonthlyIncome || ''}
                           onChange={(e) => setLeadMonthlyIncome(Number(e.target.value))}
                           className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono outline-none focus:border-white"
                         />
@@ -2558,13 +2473,21 @@ export const AdminDashboardPage: React.FC = () => {
               </div>
             ) : (
               <form onSubmit={handleRegisterPayment} className="space-y-4">
+                {paymentError && (
+                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs">{paymentError}</div>
+                )}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                     Tipo de Movimiento Financiero
                   </label>
                   <select
                     value={paymentKind}
-                    onChange={(e) => setPaymentKind(e.target.value as any)}
+                    onChange={(e) => {
+                      const kind = e.target.value as typeof paymentKind;
+                      setPaymentKind(kind);
+                      if (kind === 'PAYOFF' && payoffTotal) setPaymentAmount(payoffTotal);
+                      if (kind === 'INSTALLMENT' && nextInstallmentInfo) setPaymentAmount(nextInstallmentInfo.payment);
+                    }}
                     className="w-full px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white"
                   >
                     <option value="INSTALLMENT">Pago de Cuota Ordinaria</option>
@@ -2619,11 +2542,61 @@ export const AdminDashboardPage: React.FC = () => {
                   />
                 </div>
 
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">Fecha efectiva *</label>
+                    <input
+                      type="date"
+                      required
+                      max={todayLocalISO()}
+                      value={paymentDate}
+                      onChange={(e) => setPaymentDate(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">Método de pago *</label>
+                    <select
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value as typeof paymentMethod)}
+                      className="w-full px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white"
+                    >
+                      <option value="BANK_TRANSFER">Transferencia</option>
+                      <option value="BANK_DEPOSIT">Depósito</option>
+                      <option value="CASH">Efectivo</option>
+                      <option value="CHECK">Cheque</option>
+                      <option value="OTHER">Otro</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">N° de referencia / comprobante</label>
+                  <input
+                    type="text"
+                    value={paymentReference}
+                    onChange={(e) => setPaymentReference(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white"
+                  />
+                </div>
+
                 <div className="p-3 bg-slate-800/40 rounded-xl text-xs text-slate-400 space-y-1">
                   <div className="flex justify-between">
                     <span>Saldo actual de capital:</span>
                     <span className="font-mono text-white">{formatUSD(selectedLoan.currentPrincipalBalance)}</span>
                   </div>
+                  {nextInstallmentInfo && (
+                    <div className="flex justify-between">
+                      <span>Próxima cuota (#{nextInstallmentInfo.number} · {formatDateSV(nextInstallmentInfo.dueDate)}):</span>
+                      <span className="font-mono text-white">{formatUSD(nextInstallmentInfo.payment)}</span>
+                    </div>
+                  )}
+                  {payoffTotal && (
+                    <div className="flex justify-between">
+                      <span>Cancelación total hoy:</span>
+                      <span className="font-mono text-white">{formatUSD(payoffTotal)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span>Distribución:</span>
                     <span className="text-emerald-400">Mora → Interés → Capital</span>
@@ -2632,9 +2605,10 @@ export const AdminDashboardPage: React.FC = () => {
 
                 <button
                   type="submit"
-                  className="w-full py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-white text-slate-900 transition-all shadow-md cursor-pointer"
+                  disabled={paymentSubmitting}
+                  className="w-full py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-white text-slate-900 transition-all shadow-md cursor-pointer disabled:opacity-50"
                 >
-                  Confirmar y Aplicar al Crédito
+                  {paymentSubmitting ? 'Aplicando...' : 'Confirmar y Aplicar al Crédito'}
                 </button>
               </form>
             )}

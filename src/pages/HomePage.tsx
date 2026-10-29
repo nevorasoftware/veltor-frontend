@@ -5,70 +5,30 @@ import { FinancingSimulator } from '../components/FinancingSimulator';
 import { LeadModal } from '../components/LeadModal';
 import { BRANDING, SECTIONS, formatUSD } from '../config/branding';
 import { api } from '../api/client';
+import { usePublicSettings } from '../hooks/usePublicSettings';
+import { VehicleImage } from '../components/VehicleImage';
+import { TRANSMISSION_LABELS, estimatedInstallment, primaryImageUrl } from '../utils/vehicles';
 
 export const HomePage: React.FC = () => {
   const [featuredVehicles, setFeaturedVehicles] = useState<any[]>([]);
   const [leadModalOpen, setLeadModalOpen] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<any>(null);
 
-  // Carga de vehículos destacados desde API con fallback a datos locales
+  const [simulationSummary, setSimulationSummary] = useState<any>(null);
+  const [loadError, setLoadError] = useState(false);
+  const { data: settings } = usePublicSettings();
+
+  // Vehículos destacados: los 3 más recientes publicados
   useEffect(() => {
-    api.getVehicles('limit=3')
-      .then((res) => {
-        if (res?.items?.length > 0) {
-          setFeaturedVehicles(res.items);
-        } else {
-          setFallbackVehicles();
-        }
-      })
-      .catch(() => {
-        setFallbackVehicles();
-      });
+    api
+      .getVehicles('limit=3')
+      .then((res) => setFeaturedVehicles(res?.items || []))
+      .catch(() => setLoadError(true));
   }, []);
 
-  const setFallbackVehicles = () => {
-    setFeaturedVehicles([
-      {
-        id: 'v1',
-        brand: 'Toyota',
-        model: 'Corolla LE',
-        year: 2023,
-        type: 'Sedán',
-        salePrice: 19800,
-        minDownPayment: 2970,
-        mileageKm: 24500,
-        transmission: 'AUTOMATIC',
-        images: [{ url: 'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?auto=format&fit=crop&w=800&q=80' }],
-      },
-      {
-        id: 'v2',
-        brand: 'Honda',
-        model: 'CR-V EX',
-        year: 2022,
-        type: 'SUV',
-        salePrice: 26500,
-        minDownPayment: 3975,
-        mileageKm: 38200,
-        transmission: 'AUTOMATIC',
-        images: [{ url: 'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=800&q=80' }],
-      },
-      {
-        id: 'v3',
-        brand: 'Nissan',
-        model: 'Frontier PRO-4X',
-        year: 2024,
-        type: 'Pickup',
-        salePrice: 38900,
-        minDownPayment: 5835,
-        mileageKm: 9800,
-        transmission: 'AUTOMATIC',
-        images: [{ url: 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=800&q=80' }],
-      },
-    ]);
-  };
-
-  const handleApplyFromSimulator = () => {
+  const handleApplyFromSimulator = (summary: any) => {
     setSelectedVehicle(null);
+    setSimulationSummary(summary);
     setLeadModalOpen(true);
   };
 
@@ -116,7 +76,8 @@ export const HomePage: React.FC = () => {
         <FinancingSimulator onApplyLead={handleApplyFromSimulator} />
       </section>
 
-      {/* Vehículos Disponibles Destacados */}
+      {/* Vehículos Disponibles Destacados (solo si hay inventario publicado) */}
+      {featuredVehicles.length > 0 && (
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         <div className="flex flex-col sm:flex-row items-baseline justify-between gap-4">
           <div>
@@ -138,8 +99,7 @@ export const HomePage: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {featuredVehicles.map((v) => {
-            const imgUrl = v.images?.[0]?.url || 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=800&q=80';
-            const cuotaEstimada = Math.round((v.salePrice - (v.minDownPayment || v.salePrice * 0.15)) * 0.035);
+            const cuotaEstimada = estimatedInstallment(v, settings);
 
             return (
               <div
@@ -148,11 +108,7 @@ export const HomePage: React.FC = () => {
               >
                 <div>
                   <div className="relative h-48 w-full overflow-hidden bg-slate-800">
-                    <img
-                      src={imgUrl}
-                      alt={`${v.brand} ${v.model}`}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
+                    <VehicleImage src={primaryImageUrl(v)} alt={`${v.brand} ${v.model}`} />
                     <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-slate-900/80 backdrop-blur-md text-[11px] font-bold text-white border border-slate-700">
                       {v.type || 'Vehículo'} · {v.year}
                     </div>
@@ -164,7 +120,7 @@ export const HomePage: React.FC = () => {
                         {v.brand} {v.model}
                       </h3>
                       <p className="text-xs text-slate-400">
-                        {v.mileageKm?.toLocaleString()} km · Transmisión automática
+                        {Number(v.mileageKm || 0).toLocaleString('es-SV')} km · {TRANSMISSION_LABELS[v.transmission] || v.transmission}
                       </p>
                     </div>
 
@@ -177,14 +133,16 @@ export const HomePage: React.FC = () => {
                           {formatUSD(v.salePrice)}
                         </span>
                       </div>
-                      <div className="text-right">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                          Cuota Estimada
-                        </span>
-                        <span className="text-sm font-bold text-emerald-400">
-                          desde {formatUSD(cuotaEstimada)}/mes
-                        </span>
-                      </div>
+                      {cuotaEstimada !== null && (
+                        <div className="text-right">
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                            Cuota Estimada
+                          </span>
+                          <span className="text-sm font-bold text-emerald-400">
+                            {formatUSD(cuotaEstimada)}/mes
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -206,6 +164,13 @@ export const HomePage: React.FC = () => {
           })}
         </div>
       </section>
+      )}
+
+      {loadError && (
+        <p className="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500">
+          No fue posible cargar el inventario en este momento.
+        </p>
+      )}
 
       {/* Ventajas y Respaldos */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -258,6 +223,7 @@ export const HomePage: React.FC = () => {
         isOpen={leadModalOpen}
         onClose={() => setLeadModalOpen(false)}
         vehicle={selectedVehicle}
+        initialTerms={selectedVehicle ? undefined : simulationSummary}
       />
     </div>
   );

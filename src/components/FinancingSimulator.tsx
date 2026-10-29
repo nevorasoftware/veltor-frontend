@@ -8,31 +8,37 @@ import {
   Calendar,
   Percent,
 } from 'lucide-react';
-import { formatUSD, formatDateSV } from '../config/branding';
+import { formatUSD, formatDateSV, todayLocalISO, addMonthsISO, levelPayment } from '../config/branding';
 import { api } from '../api/client';
+import { usePublicSettings } from '../hooks/usePublicSettings';
 
 interface FinancingSimulatorProps {
-  initialPrice?: number;
-  initialDownPayment?: number;
+  // La API serializa los montos decimales como texto, por eso se aceptan ambos tipos
+  initialPrice?: number | string;
+  initialDownPayment?: number | string;
   vehicleName?: string;
   onApplyLead?: (summary: { price: number; down: number; term: number; installment: number; monthlyRate?: number }) => void;
 }
 
+const DEFAULT_SIMULATION_PRICE = 20000;
+
 export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
-  initialPrice = 20000,
+  initialPrice,
   initialDownPayment,
   vehicleName,
   onApplyLead,
 }) => {
+  const { data: settings } = usePublicSettings();
+  const minDownPercent = settings?.minDownPercent ?? 15;
+  const basePrice = Number(initialPrice) > 0 ? Number(initialPrice) : DEFAULT_SIMULATION_PRICE;
+  const baseDown = Number(initialDownPayment) > 0 ? Number(initialDownPayment) : Math.round((basePrice * minDownPercent) / 100);
+
   // 1. Estados principales de entrada
-  const [price, setPrice] = useState<number>(initialPrice);
-  const [downPayment, setDownPayment] = useState<number>(() => {
-    if (initialDownPayment && initialDownPayment > 0) return initialDownPayment;
-    return Math.round(initialPrice * 0.15);
-  });
+  const [price, setPrice] = useState<number>(basePrice);
+  const [downPayment, setDownPayment] = useState<number>(baseDown);
   const [termMonths, setTermMonths] = useState<number>(36);
 
-  // 2. Tasa de interés mensual parametrizable (por defecto toma la tasa del sistema)
+  // 2. Tasa de interés mensual parametrizable (por defecto toma la tasa oficial del sistema)
   const [monthlyRatePercent, setMonthlyRatePercent] = useState<number>(1.5);
   const [defaultSystemRate, setDefaultSystemRate] = useState<number>(1.5);
 
@@ -40,34 +46,21 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
   const [showSchedule, setShowSchedule] = useState<boolean>(false);
   const [simulationData, setSimulationData] = useState<any>(null);
 
-  // Cargar tasa preferencial vigente desde la API
+  // Aplicar tasa y plazo oficiales cuando llegan desde la API
   useEffect(() => {
-    let mounted = true;
-    api
-      .getPublicSettings()
-      .then((settings) => {
-        if (mounted && settings?.preferentialMonthlyRate) {
-          const r = Number(settings.preferentialMonthlyRate) * 100;
-          setMonthlyRatePercent(r);
-          setDefaultSystemRate(r);
-        }
-      })
-      .catch(() => {
-        // Mantiene 1.50% por defecto si no hay conexión
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  // Si cambia initialPrice desde el vehículo seleccionado
-  useEffect(() => {
-    if (initialPrice && initialPrice > 0) {
-      setPrice(initialPrice);
-      const defaultDown = initialDownPayment || Math.round(initialPrice * 0.15);
-      setDownPayment(defaultDown);
+    if (settings?.preferentialMonthlyRate) {
+      const r = Number((settings.preferentialMonthlyRate * 100).toFixed(4));
+      setMonthlyRatePercent(r);
+      setDefaultSystemRate(r);
     }
-  }, [initialPrice, initialDownPayment]);
+    if (settings?.defaultTermMonths) setTermMonths(settings.defaultTermMonths);
+  }, [settings?.preferentialMonthlyRate, settings?.defaultTermMonths]);
+
+  // Si cambia el vehículo seleccionado
+  useEffect(() => {
+    setPrice(basePrice);
+    setDownPayment(baseDown);
+  }, [basePrice, baseDown]);
 
   // Porcentaje calculado de la prima
   const downPercent = useMemo(() => {
@@ -81,7 +74,7 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
     setPrice(validPrice);
     // Ajustar prima si excede el nuevo precio o mantener el 15% si era proporcional
     if (downPayment > validPrice) {
-      setDownPayment(Math.round(validPrice * 0.15));
+      setDownPayment(Math.round((validPrice * minDownPercent) / 100));
     }
   };
 
@@ -101,10 +94,9 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
     const rateDecimal = (monthlyRatePercent / 100).toFixed(6);
     const principal = Math.max(0, price - downPayment);
 
-    const today = new Date();
-    const startDate = today.toISOString().split('T')[0];
-    const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-    const firstDueDate = nextMonth.toISOString().split('T')[0];
+    // Mismas fechas que usa la formalización real: primera cuota un mes después del desembolso
+    const startDate = todayLocalISO();
+    const firstDueDate = addMonthsISO(startDate, 1);
 
     const effectiveTerm = Math.max(1, termMonths || 36);
 
@@ -125,13 +117,10 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
       setSimulationData(res);
     } catch {
       // Fallback local seguro con fórmula francesa
+      // Si la API no responde se muestra una estimación local con la misma fórmula francesa
       const i = monthlyRatePercent / 100;
       const n = effectiveTerm;
-      let cuota = 0;
-      if (principal > 0) {
-        if (i === 0) cuota = principal / n;
-        else cuota = (principal * i) / (1 - Math.pow(1 + i, -n));
-      }
+      const cuota = levelPayment(principal, i, n);
       const totalPagos = cuota * n;
       const totalInteres = Math.max(0, totalPagos - principal);
 
@@ -142,11 +131,9 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
         const interesCuota = saldo * i;
         const capitalCuota = cuota - interesCuota;
         const saldoFinal = Math.max(0, saldo - capitalCuota);
-        const fDate = new Date(today.getFullYear(), today.getMonth() + p, 1);
-
         localSchedule.push({
           number: p,
-          dueDate: fDate.toISOString().split('T')[0],
+          dueDate: addMonthsISO(startDate, p),
           openingBalance: saldo.toFixed(2),
           principal: capitalCuota.toFixed(2),
           interest: interesCuota.toFixed(2),

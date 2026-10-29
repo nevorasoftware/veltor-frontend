@@ -9,6 +9,7 @@ import { SimulatorPage } from './pages/SimulatorPage';
 import { LoginPage } from './pages/LoginPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { ClientPortalPage } from './pages/ClientPortalPage';
+import { RequireAuth } from './auth/RequireAuth';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,8 +32,22 @@ export const App: React.FC = () => {
               <Route path="/catalogo" element={<CatalogPage />} />
               <Route path="/simulador" element={<SimulatorPage />} />
               <Route path="/login" element={<LoginPage />} />
-              <Route path="/admin" element={<AdminDashboardPage />} />
-              <Route path="/portal" element={<ClientPortalPage />} />
+              <Route
+                path="/admin"
+                element={
+                  <RequireAuth audience="staff">
+                    <AdminDashboardPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/portal"
+                element={
+                  <RequireAuth audience="customer">
+                    <ClientPortalPage />
+                  </RequireAuth>
+                }
+              />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>

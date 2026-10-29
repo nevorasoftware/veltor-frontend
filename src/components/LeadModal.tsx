@@ -11,8 +11,8 @@ interface LeadModalProps {
     brand: string;
     model: string;
     year: number;
-    salePrice: number;
-  };
+    salePrice: number | string;
+  } | null;
   initialTerms?: {
     price?: number;
     down?: number;
@@ -27,12 +27,24 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
-  const [privacyAccepted, setPrivacyAccepted] = useState(true);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [successCode, setSuccessCode] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  // Al cerrar se limpia el formulario para la siguiente solicitud
+  const handleClose = () => {
+    setFullName('');
+    setPhone('');
+    setEmail('');
+    setMessage('');
+    setPrivacyAccepted(false);
+    setSuccessCode(null);
+    setErrorMsg(null);
+    onClose();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,10 +66,10 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
         vehicleId: vehicle?.id,
         estimatedDown: initialTerms?.down,
         termMonths: initialTerms?.term,
-        privacyAccepted: true,
+        privacyAccepted,
       });
 
-      setSuccessCode(res.code || 'PROS-OK');
+      setSuccessCode(res.code);
     } catch (err: any) {
       setErrorMsg(err.message || 'Ocurrió un error al enviar su solicitud.');
     } finally {
@@ -69,7 +81,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
       <div className="relative w-full max-w-lg glass-panel rounded-2xl border border-slate-700 bg-[#0F172A] p-6 sm:p-8 shadow-2xl text-slate-100">
         <button
-          onClick={onClose}
+          onClick={handleClose}
           className="absolute top-5 right-5 p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
           aria-label="Cerrar ventana"
         >
@@ -83,13 +95,13 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
             </div>
             <h3 className="text-2xl font-bold text-white">¡Solicitud Recibida!</h3>
             <p className="text-xs text-slate-300 max-w-sm mx-auto leading-relaxed">
-              Un asesor de crédito de VELTOR se comunicará contigo al número proporcionado para dar seguimiento a tu financiamiento.
+              Un asesor de crédito se comunicará contigo al número proporcionado para dar seguimiento a tu financiamiento.
             </p>
             <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700 font-mono text-sm text-slate-200">
               Código de trámite: <span className="font-bold text-white">{successCode}</span>
             </div>
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="mt-4 px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-white text-slate-900 transition-colors"
             >
               Cerrar
@@ -205,7 +217,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
                   className="mt-1 rounded bg-slate-800 border-slate-700 text-slate-200 focus:ring-0"
                 />
                 <label htmlFor="privacy" className="text-[11px] text-slate-400 leading-tight">
-                  Acepto el tratamiento de mis datos de contacto para la evaluación crediticia y confirmo haber leído el aviso de privacidad de VELTOR.
+                  Acepto el tratamiento de mis datos de contacto para la evaluación crediticia y confirmo haber leído el aviso de privacidad.
                 </label>
               </div>
 

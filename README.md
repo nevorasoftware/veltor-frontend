@@ -72,3 +72,14 @@ El proyecto cuenta con un `Dockerfile` multi-etapa y un servidor web Nginx con c
 ---
 
 *VELTOR — Una solución tecnológica de Nevora Software*
+
+## Variables de entorno
+
+Ver `.env.example`. En Railway se pasan como variables del servicio (se inyectan en el build de Vite):
+
+- `VITE_API_URL`: URL de la API con prefijo `/api/v1`.
+- `VITE_CONTACT_PHONE`, `VITE_CONTACT_EMAIL`, `VITE_CONTACT_HOURS`: contacto del pie de página (si están vacíos no se muestran).
+- `VITE_BANK_ACCOUNTS`, `VITE_BANK_ACCOUNT_HOLDER`, `VITE_PAYMENTS_EMAIL`, `VITE_PAYMENTS_WHATSAPP`: instrucciones de pago del portal del cliente.
+
+El sitio no incluye datos de demostración: el catálogo, los créditos y los gastos provienen únicamente de la API.
+El inventario se administra desde **Panel → Vehículos**.

@@ -74,25 +74,33 @@ export const Footer: React.FC = () => {
             </ul>
           </div>
 
-          {/* Columna Contacto */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200">
-              Atención al Cliente
-            </h4>
-            <div className="space-y-2 text-xs text-slate-400">
-              <div className="flex items-center gap-2">
-                <Phone className="w-3.5 h-3.5 text-slate-400" />
-                <span>+503 2200-8800</span>
+          {/* Columna Contacto (solo si está configurada) */}
+          {(BRANDING.contactPhone || BRANDING.contactEmail) && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                Atención al Cliente
+              </h4>
+              <div className="space-y-2 text-xs text-slate-400">
+                {BRANDING.contactPhone && (
+                  <div className="flex items-center gap-2">
+                    <Phone className="w-3.5 h-3.5 text-slate-400" />
+                    <a href={`tel:${BRANDING.contactPhone.replace(/\s/g, '')}`} className="hover:text-white">
+                      {BRANDING.contactPhone}
+                    </a>
+                  </div>
+                )}
+                {BRANDING.contactEmail && (
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-3.5 h-3.5 text-slate-400" />
+                    <a href={`mailto:${BRANDING.contactEmail}`} className="hover:text-white">
+                      {BRANDING.contactEmail}
+                    </a>
+                  </div>
+                )}
+                {BRANDING.contactHours && <p className="text-[11px] text-slate-400 pt-1">{BRANDING.contactHours}</p>}
               </div>
-              <div className="flex items-center gap-2">
-                <Mail className="w-3.5 h-3.5 text-slate-400" />
-                <span>contacto@veltor.app</span>
-              </div>
-              <p className="text-[11px] text-slate-400 pt-1">
-                Lunes a Viernes de 8:00 AM a 5:30 PM
-              </p>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Separador */}
