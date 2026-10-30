@@ -50,7 +50,14 @@ export const ClientPortalPage: React.FC = () => {
   const detail = loanQuery.data;
 
   const installments: any[] = detail?.snapshot?.installments || [];
-  const nextInstallment = installments.find((i) => i.status !== 'PAID');
+  const nextInstallment = installments.find((i) => ['PENDING', 'PARTIAL', 'OVERDUE'].includes(i.status));
+  // Lo que falta pagar de la próxima cuota, incluida la mora acumulada a hoy
+  const nextLateFee = nextInstallment
+    ? Number(nextInstallment.lateInterestAccrued || 0) - Number(nextInstallment.paidLateInterest || 0)
+    : 0;
+  const nextDue = nextInstallment
+    ? Number(nextInstallment.payment) - Number(nextInstallment.paidPrincipal || 0) - Number(nextInstallment.paidInterest || 0) + nextLateFee
+    : 0;
   const paidCount = installments.filter((i) => i.status === 'PAID').length;
   const overdueCount = installments.filter((i) => i.status === 'OVERDUE').length;
   const originalPrincipal = Number(detail?.loan?.originalPrincipal || 0);
@@ -203,9 +210,13 @@ export const ClientPortalPage: React.FC = () => {
             <div className="p-3.5 rounded-2xl bg-slate-800/40 border border-slate-700/60">
               <span className="text-slate-400 block font-medium">Próxima Cuota</span>
               <span className="text-xl sm:text-2xl font-black text-emerald-400 font-mono mt-0.5 block">
-                {nextInstallment ? formatUSD(nextInstallment.payment) : '-'}
+                {nextInstallment ? formatUSD(nextDue) : '-'}
               </span>
-              <span className="text-[10px] text-slate-400 block mt-1">Tasa {(Number(loan.monthlyRate) * 100).toFixed(2)}% mensual</span>
+              <span className={`text-[10px] block mt-1 ${nextLateFee > 0 ? 'text-rose-300 font-semibold' : 'text-slate-400'}`}>
+                {nextLateFee > 0
+                  ? `Incluye mora de ${formatUSD(nextLateFee)} (${nextInstallment.daysOverdue} días de atraso)`
+                  : `Tasa ${(Number(loan.monthlyRate) * 100).toFixed(2)}% mensual`}
+              </span>
             </div>
 
             <div className="p-3.5 rounded-2xl bg-slate-800/40 border border-slate-700/60">

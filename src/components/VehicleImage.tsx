@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Car } from 'lucide-react';
+import { resolveMediaUrl } from '../api/client';
 
 interface VehicleImageProps {
   src?: string | null;
@@ -10,8 +11,9 @@ interface VehicleImageProps {
 /** Imagen del vehículo con un marcador neutro cuando no hay foto o no carga. */
 export const VehicleImage: React.FC<VehicleImageProps> = ({ src, alt, className = '' }) => {
   const [failed, setFailed] = useState(false);
+  const url = resolveMediaUrl(src);
 
-  if (!src || failed) {
+  if (!url || failed) {
     return (
       <div className={`w-full h-full flex items-center justify-center bg-slate-800 text-slate-600 ${className}`}>
         <Car className="w-12 h-12" />
@@ -19,5 +21,5 @@ export const VehicleImage: React.FC<VehicleImageProps> = ({ src, alt, className 
     );
   }
 
-  return <img src={src} alt={alt} onError={() => setFailed(true)} className={`w-full h-full object-cover ${className}`} />;
+  return <img src={url} alt={alt} onError={() => setFailed(true)} className={`w-full h-full object-cover ${className}`} />;
 };

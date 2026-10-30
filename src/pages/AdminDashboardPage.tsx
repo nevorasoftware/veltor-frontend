@@ -27,14 +27,18 @@ import {
   Mail,
   LayoutDashboard,
   LayoutGrid,
+  HardDrive,
 } from 'lucide-react';
 import { SECTIONS, formatUSD, formatDateSV, todayLocalISO } from '../config/branding';
 import { api } from '../api/client';
+import type { CollectionSettings, LateFeeType } from '../api/client';
+import { CollectionSettingsPanel, LATE_FEE_LABELS } from '../components/admin/CollectionSettingsPanel';
 import { formatDUI, formatNIT, isValidDUI, isValidNIT, compressAndReadFileAsBase64 } from '../utils/formatters';
 import { clearSession, getUser } from '../auth/session';
 import { AdminVehiclesTab } from '../components/admin/AdminVehiclesTab';
 import { usePublicSettings } from '../hooks/usePublicSettings';
 import { suggestedDownPayment } from '../utils/vehicles';
+import { addMonths, firstDueDateForDay } from '../utils/collections';
 
 interface UploadedDocState {
   file: File;
@@ -70,6 +74,7 @@ export const AdminDashboardPage: React.FC = () => {
   // Modal para registro de pago
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedLoan, setSelectedLoan] = useState<any>(null);
+  const [archivingLoanId, setArchivingLoanId] = useState<string | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState<string>(todayLocalISO());
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'BANK_TRANSFER' | 'BANK_DEPOSIT' | 'CHECK' | 'OTHER'>('BANK_TRANSFER');
@@ -77,7 +82,14 @@ export const AdminDashboardPage: React.FC = () => {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState('');
-  const [nextInstallmentInfo, setNextInstallmentInfo] = useState<{ number: number; dueDate: string; payment: string } | null>(null);
+  const [nextInstallmentInfo, setNextInstallmentInfo] = useState<{
+    number: number;
+    dueDate: string;
+    /** Saldo pendiente de la cuota incluida la mora */
+    payment: string;
+    lateFee: number;
+    daysOverdue: number;
+  } | null>(null);
   const [payoffTotal, setPayoffTotal] = useState<string | null>(null);
 
   // Acceso al portal del cliente
@@ -108,6 +120,12 @@ export const AdminDashboardPage: React.FC = () => {
 
   // Tasa de interés parametrizable por cliente al aperturar crédito
   const [leadMonthlyRate, setLeadMonthlyRate] = useState<number>(1.5);
+
+  // Día de pago y mora del crédito (valores sugeridos desde Parámetros y Tasas)
+  const [collectionSettings, setCollectionSettings] = useState<CollectionSettings | null>(null);
+  const [leadPaymentDay, setLeadPaymentDay] = useState<number | ''>('');
+  const [leadLateFeeType, setLeadLateFeeType] = useState<LateFeeType>('PER_DAY');
+  const [leadLateFeeAmount, setLeadLateFeeAmount] = useState<number>(5);
 
   // Campos de Formalización a Crédito Activo
   const [leadDui, setLeadDui] = useState<string>('');
@@ -168,7 +186,16 @@ export const AdminDashboardPage: React.FC = () => {
       .getNotificationSettings()
       .then((res) => setStaffEmailsInput((res?.staffEmails || []).join(', ')))
       .catch(() => {});
+    api.getCollectionSettings().then(setCollectionSettings).catch(() => {});
   }, []);
+
+  const lateFeeDefaultAmount = (type: LateFeeType, cfg = collectionSettings) =>
+    type === 'PER_DAY' ? cfg?.lateFeePerDayAmount ?? 5 : type === 'PER_INSTALLMENT' ? cfg?.lateFeePerInstallmentAmount ?? 20 : 0;
+
+  const changeLeadLateFeeType = (type: LateFeeType) => {
+    setLeadLateFeeType(type);
+    setLeadLateFeeAmount(lateFeeDefaultAmount(type));
+  };
 
   const loadExpenses = async () => {
     const [expList, expSum] = await Promise.all([api.getExpenses(), api.getExpensesSummary()]);
@@ -368,6 +395,32 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
+  // Carpeta del crédito en Google Drive: se abre si ya existe; si no, se archiva el expediente y luego se abre
+  const handleDriveFolder = async (loan: any) => {
+    if (loan.driveFolderId) {
+      window.open(`https://drive.google.com/drive/folders/${loan.driveFolderId}`, '_blank', 'noopener');
+      return;
+    }
+    setArchivingLoanId(loan.id);
+    try {
+      const res = await api.archiveLoanToDrive(loan.id);
+      if (!res.enabled) {
+        alert(res.message);
+        return;
+      }
+      alert(
+        `Expediente archivado en Google Drive: ${res.documentsMoved} documento(s)${res.amortizationSchedule ? ' y tabla de amortización' : ''}.` +
+          (res.missingFiles?.length ? `\nNo se encontraron en el servidor: ${res.missingFiles.join(', ')}` : ''),
+      );
+      window.open(res.folderUrl, '_blank', 'noopener');
+      loadData();
+    } catch (err: any) {
+      alert(err.message || 'No se pudo archivar el expediente en Google Drive.');
+    } finally {
+      setArchivingLoanId(null);
+    }
+  };
+
   const handleGrantPortalAccess = async (loan: any) => {
     if (!loan.customer?.id) return;
     const verb = 'habilitar o restablecer';
@@ -399,10 +452,14 @@ export const AdminDashboardPage: React.FC = () => {
 
     try {
       const [ledger, quote] = await Promise.all([api.getLoanLedger(loan.id), api.getPayoffQuote(loan.id)]);
-      const next = ledger?.snapshot?.current?.installments?.find((i: any) => i.status !== 'PAID');
+      const next = ledger?.snapshot?.current?.installments?.find((i: any) =>
+        ['PENDING', 'PARTIAL', 'OVERDUE'].includes(i.status),
+      );
       if (next) {
-        setNextInstallmentInfo({ number: next.number, dueDate: next.dueDate, payment: next.payment });
-        setPaymentAmount(next.payment);
+        const lateFee = Number(next.lateInterestAccrued) - Number(next.paidLateInterest);
+        const due = (Number(next.payment) - Number(next.paidPrincipal) - Number(next.paidInterest) + lateFee).toFixed(2);
+        setNextInstallmentInfo({ number: next.number, dueDate: next.dueDate, payment: due, lateFee, daysOverdue: next.daysOverdue ?? 0 });
+        setPaymentAmount(due);
       }
       if (quote?.total) setPayoffTotal(quote.total);
     } catch {
@@ -468,6 +525,10 @@ export const AdminDashboardPage: React.FC = () => {
     );
     setLeadVehicleId(lead.vehicleId || lead.vehicle?.id || '');
     setLeadMonthlyRate(adminMonthlyRate);
+    const feeType = collectionSettings?.defaultLateFeeType ?? 'PER_DAY';
+    setLeadPaymentDay(collectionSettings?.defaultPaymentDay ?? '');
+    setLeadLateFeeType(feeType);
+    setLeadLateFeeAmount(lateFeeDefaultAmount(feeType));
     setLeadDui('');
     setLeadNit('');
     setLeadAddress('');
@@ -618,6 +679,9 @@ export const AdminDashboardPage: React.FC = () => {
         downPayment: leadDownPayment,
         termMonths: leadTermMonths,
         monthlyRate: leadMonthlyRate / 100,
+        paymentDay: leadPaymentDay === '' ? undefined : leadPaymentDay,
+        lateFeeType: leadLateFeeType,
+        lateFeeAmount: leadLateFeeType === 'NONE' ? undefined : leadLateFeeAmount,
         documents: documentsPayload,
       });
 
@@ -1046,7 +1110,7 @@ export const AdminDashboardPage: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-6 text-xs border-t lg:border-t-0 pt-4 lg:pt-0 border-slate-700">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-xs border-t lg:border-t-0 pt-4 lg:pt-0 border-slate-700">
                   <div>
                     <span className="text-slate-400 block font-semibold">Monto Original</span>
                     <span className="font-mono font-bold text-white text-sm">
@@ -1063,6 +1127,22 @@ export const AdminDashboardPage: React.FC = () => {
                     <span className="text-slate-400 block font-semibold">Tasa Mensual</span>
                     <span className="font-mono font-bold text-white text-sm">
                       {(Number(ln.monthlyRate) * 100).toFixed(2)}%
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-semibold">Pago y Mora</span>
+                    <span className="font-mono font-bold text-white text-sm">
+                      Día {ln.paymentDay ?? Number(String(ln.firstDueDate).slice(8, 10))}
+                    </span>
+                    <span className="block text-[10px] text-slate-400">
+                      {ln.lateFeeType === 'PER_DAY'
+                        ? `${formatUSD(ln.lateFeeAmount)} por día`
+                        : ln.lateFeeType === 'PER_INSTALLMENT'
+                        ? `${formatUSD(ln.lateFeeAmount)} por cuota`
+                        : ln.lateRateMonthly
+                        ? `${(Number(ln.lateRateMonthly) * 100).toFixed(2)}% mensual`
+                        : 'Sin mora'}
+                      {' · '}gracia {ln.graceDays} d
                     </span>
                   </div>
                 </div>
@@ -1100,6 +1180,15 @@ export const AdminDashboardPage: React.FC = () => {
                   >
                     <ShieldCheck className="w-3.5 h-3.5 text-sky-300" />
                     <span>Acceso al portal</span>
+                  </button>
+                  <button
+                    disabled={archivingLoanId === ln.id}
+                    onClick={() => handleDriveFolder(ln)}
+                    className="w-full sm:w-auto p-2.5 rounded-xl bg-slate-700/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-colors flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-wait"
+                    title={ln.driveFolderId ? 'Abrir la carpeta del crédito en Google Drive' : 'Archivar el expediente del crédito en Google Drive'}
+                  >
+                    <HardDrive className="w-3.5 h-3.5 text-amber-300" />
+                    <span>{archivingLoanId === ln.id ? 'Archivando...' : ln.driveFolderId ? 'Carpeta Drive' : 'Archivar en Drive'}</span>
                   </button>
                   <button
                     disabled={ln.status !== 'ACTIVE'}
@@ -1272,6 +1361,8 @@ export const AdminDashboardPage: React.FC = () => {
               <CheckCircle2 className="w-4 h-4" />
             </button>
           </div>
+
+          <CollectionSettingsPanel />
         </div>
       )}
 
@@ -2037,6 +2128,73 @@ export const AdminDashboardPage: React.FC = () => {
                         </div>
                       </div>
 
+                      {/* Día de pago y mora del crédito */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                        <div className="space-y-2 p-3.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                          <label className="block text-slate-300 font-semibold">Día de Pago Mensual</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="28"
+                            value={leadPaymentDay}
+                            placeholder={`Mismo día del desembolso (${Number(todayLocalISO().slice(8, 10))})`}
+                            onChange={(e) =>
+                              setLeadPaymentDay(e.target.value === '' ? '' : Math.min(28, Math.max(1, Number(e.target.value))))
+                            }
+                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono text-xs outline-none focus:border-white"
+                          />
+                          <p className="text-[10px] text-slate-500">
+                            Primera cuota:{' '}
+                            {formatDateSV(
+                              leadPaymentDay === ''
+                                ? addMonths(todayLocalISO(), 1)
+                                : firstDueDateForDay(todayLocalISO(), leadPaymentDay),
+                            )}
+                            {leadPaymentDay !== '' && ` · luego el ${leadPaymentDay} de cada mes`}
+                          </p>
+                        </div>
+
+                        <div className="space-y-2 p-3.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                          <label className="block text-slate-300 font-semibold">Tipo de Mora</label>
+                          <select
+                            value={leadLateFeeType}
+                            onChange={(e) => changeLeadLateFeeType(e.target.value as LateFeeType)}
+                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono text-xs outline-none focus:border-white"
+                          >
+                            {(Object.keys(LATE_FEE_LABELS) as LateFeeType[]).map((k) => (
+                              <option key={k} value={k}>
+                                {LATE_FEE_LABELS[k]}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-[10px] text-slate-500">
+                            Se cobra después de {collectionSettings?.graceDays ?? 5} día(s) de gracia.
+                          </p>
+                        </div>
+
+                        <div className="space-y-2 p-3.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                          <label className="block text-slate-300 font-semibold">
+                            {leadLateFeeType === 'PER_DAY' ? 'Mora por Día ($)' : 'Cuota de Mora ($)'}
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            disabled={leadLateFeeType === 'NONE'}
+                            value={leadLateFeeType === 'NONE' ? '' : leadLateFeeAmount}
+                            onChange={(e) => setLeadLateFeeAmount(Number(e.target.value))}
+                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono text-xs outline-none focus:border-white disabled:opacity-40"
+                          />
+                          <p className="text-[10px] text-slate-500">
+                            {leadLateFeeType === 'PER_DAY'
+                              ? 'Se suma por cada día de atraso hasta que se registre el pago.'
+                              : leadLateFeeType === 'PER_INSTALLMENT'
+                              ? 'Se suma una vez a cada cuota vencida.'
+                              : 'El crédito no generará recargos por atraso.'}
+                          </p>
+                        </div>
+                      </div>
+
                       {/* Proyección y Resumen Financiero en Vivo */}
                       {(() => {
                         const vehiclePrice = Number(selectedLead.vehicle?.salePrice || 20000);
@@ -2671,6 +2829,12 @@ export const AdminDashboardPage: React.FC = () => {
                     <div className="flex justify-between">
                       <span>Próxima cuota (#{nextInstallmentInfo.number} · {formatDateSV(nextInstallmentInfo.dueDate)}):</span>
                       <span className="font-mono text-white">{formatUSD(nextInstallmentInfo.payment)}</span>
+                    </div>
+                  )}
+                  {nextInstallmentInfo && nextInstallmentInfo.daysOverdue > 0 && (
+                    <div className="flex justify-between text-rose-300">
+                      <span>Vencida hace {nextInstallmentInfo.daysOverdue} día(s) · mora incluida:</span>
+                      <span className="font-mono">{formatUSD(nextInstallmentInfo.lateFee)}</span>
                     </div>
                   )}
                   {payoffTotal && (

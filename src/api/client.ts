@@ -9,6 +9,32 @@ export interface ApiErrorResponse {
   error?: string;
 }
 
+export type LateFeeType = 'NONE' | 'PER_DAY' | 'PER_INSTALLMENT';
+
+/** Parámetros de cobranza: recordatorios, gracia, día de pago y mora */
+export interface CollectionSettings {
+  reminderDaysBefore: number;
+  graceDays: number;
+  overdueReminderEveryDays: number;
+  defaultPaymentDay: number | null;
+  defaultLateFeeType: LateFeeType;
+  lateFeePerDayAmount: number;
+  lateFeePerInstallmentAmount: number;
+}
+
+export interface StorageStatus {
+  enabled: boolean;
+  driver: string;
+  rootFolder?: string;
+  rootFolderUrl?: string;
+  message?: string;
+  error?: string;
+}
+
+/** Las fotos guardadas en Google Drive se publican por la API con una ruta relativa (media/...) */
+export const resolveMediaUrl = (url?: string | null) =>
+  url && url.startsWith('media/') ? `${API_BASE}/${url}` : url || undefined;
+
 /** Cuando el backend rechaza el token se cierra la sesión y se envía al login. */
 function handleUnauthorized(endpoint: string) {
   if (endpoint.startsWith('/auth/login')) return;
@@ -149,6 +175,14 @@ export const api = {
   getNotificationSettings: () => request<any>('/settings/notifications'),
   updateStaffEmails: (staffEmails: string[]) =>
     request<any>('/settings/notifications', json('PATCH', { staffEmails })),
+  getCollectionSettings: () => request<CollectionSettings>('/settings/collections'),
+  updateCollectionSettings: (payload: Partial<CollectionSettings>) =>
+    request<CollectionSettings & { message: string }>('/settings/collections', json('PATCH', payload)),
+  runCollectionDaemon: () => request<any>('/notifications/payment-reminders/run', { method: 'POST' }),
+
+  // Almacenamiento en Google Drive
+  getStorageStatus: () => request<StorageStatus>('/storage/status'),
+  archiveLoanToDrive: (loanId: string) => request<any>(`/finance/loans/${loanId}/drive/archive`, { method: 'POST' }),
 
   // Control de Gastos y Contabilidad
   getExpenses: (params?: Record<string, string>) => {
