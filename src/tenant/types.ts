@@ -65,7 +65,8 @@ export interface FinancingProductInput {
   maxTermMonths: number;
   minDownPercent: number;
   graceDays: number;
-  lateRateMonthly: number;
+  /** Interés moratorio heredado (opcional); la mora real se configura en Parámetros de cobranza. */
+  lateRateMonthly?: number | null;
 }
 
 export interface CreateCompanyInput extends CompanyBrandingInput {

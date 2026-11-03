@@ -42,12 +42,14 @@ export function validateProductForm(p: ProductFormState): string[] {
     ['maxTermMonths', 'el plazo máximo'],
     ['minDownPercent', 'la prima mínima'],
     ['graceDays', 'los días de gracia'],
-    ['lateRatePct', 'la tasa de mora'],
   ];
   const missing = fields.filter(([k]) => !Number.isFinite(num(p[k])) || num(p[k]) < 0).map(([, label]) => label);
   if (missing.length) {
     errors.push(`Complete con un número válido: ${missing.join(', ')}.`);
     return errors;
+  }
+  if (p.lateRatePct.trim() !== '' && (!Number.isFinite(num(p.lateRatePct)) || num(p.lateRatePct) < 0)) {
+    errors.push('La tasa de mora debe ser un número válido o quedar vacía.');
   }
   const [minR, maxR, defR] = [num(p.minRatePct), num(p.maxRatePct), num(p.defaultRatePct)];
   if (minR <= 0) errors.push('La tasa mínima debe ser mayor que 0.');
@@ -72,7 +74,7 @@ export function productFormToInput(p: ProductFormState): FinancingProductInput {
     maxTermMonths: num(p.maxTermMonths),
     minDownPercent: num(p.minDownPercent),
     graceDays: num(p.graceDays),
-    lateRateMonthly: pctToRate(p.lateRatePct),
+    lateRateMonthly: p.lateRatePct.trim() === '' ? null : pctToRate(p.lateRatePct),
   };
 }
 
@@ -81,14 +83,14 @@ export const ProductFields: React.FC<{ value: ProductFormState; onChange: (patch
   value,
   onChange,
 }) => {
-  const field = (key: keyof ProductFormState, label: string, hint?: string, step = 'any') => (
+  const field = (key: keyof ProductFormState, label: string, hint?: string, step = 'any', required = true) => (
     <FormField label={label} hint={hint}>
       <input
         type="number"
         inputMode="decimal"
         min={0}
         step={step}
-        required
+        required={required}
         value={value[key]}
         onChange={(e) => onChange({ [key]: e.target.value } as Partial<ProductFormState>)}
         className={`${companyInputClass} font-mono`}
@@ -117,7 +119,13 @@ export const ProductFields: React.FC<{ value: ProductFormState; onChange: (patch
         {field('maxTermMonths', 'Plazo máximo (meses) *', undefined, '1')}
         {field('minDownPercent', 'Prima mínima (%) *')}
         {field('graceDays', 'Días de gracia *', 'Días sin mora después del vencimiento', '1')}
-        {field('lateRatePct', 'Tasa de mora (% mensual) *')}
+        {field(
+          'lateRatePct',
+          'Tasa de mora (% mensual, opcional)',
+          'Interés moratorio heredado. La mora que se cobra (monto por día o por cuota) se configura en Parámetros de cobranza.',
+          'any',
+          false,
+        )}
       </div>
     </FormSection>
   );
