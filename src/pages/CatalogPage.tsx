@@ -253,7 +253,7 @@ export const CatalogPage: React.FC = () => {
 
       {/* Modal de Detalle de Vehículo y Ficha Técnica */}
       {detailVehicle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
           <div className="relative w-full max-w-6xl glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-5 sm:p-8 shadow-2xl my-6">
             <button
               onClick={() => setDetailVehicle(null)}

@@ -25,3 +25,15 @@ export function firstDueDateForDay(disbursement: string, paymentDay: number) {
     .filter((c) => daysBetween(disbursement, c) >= 15)
     .reduce((best, c) => (Math.abs(daysBetween(target, c)) < Math.abs(daysBetween(target, best)) ? c : best));
 }
+
+/**
+ * Lo que falta pagar de una cuota del ledger, en el orden en que el backend aplica los pagos
+ * (mora → seguro → interés → capital): cuota total con seguro − lo pagado + mora pendiente.
+ */
+export function installmentOutstanding(i: any): { due: number; lateFee: number } {
+  const n = (v: unknown) => Number(v) || 0;
+  const total = i?.totalPayment != null ? n(i.totalPayment) : n(i?.payment) + n(i?.insurance);
+  const paid = n(i?.paidPrincipal) + n(i?.paidInterest) + n(i?.paidInsurance);
+  const lateFee = Math.max(0, n(i?.lateInterestAccrued) - n(i?.paidLateInterest));
+  return { due: Math.max(0, total - paid) + lateFee, lateFee };
+}

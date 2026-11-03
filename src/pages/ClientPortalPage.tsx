@@ -17,6 +17,7 @@ import {
 import { formatMoney, formatDate } from '../utils/format';
 import { useTenant } from '../tenant/TenantContext';
 import { vehicleTitle } from '../utils/vehicles';
+import { installmentOutstanding } from '../utils/collections';
 import { api } from '../api/client';
 import { clearSession } from '../auth/session';
 
@@ -55,12 +56,9 @@ export const ClientPortalPage: React.FC = () => {
   const installments: any[] = detail?.snapshot?.installments || [];
   const nextInstallment = installments.find((i) => ['PENDING', 'PARTIAL', 'OVERDUE'].includes(i.status));
   // Lo que falta pagar de la próxima cuota, incluida la mora acumulada a hoy
-  const nextLateFee = nextInstallment
-    ? Number(nextInstallment.lateInterestAccrued || 0) - Number(nextInstallment.paidLateInterest || 0)
-    : 0;
-  const nextDue = nextInstallment
-    ? Number(nextInstallment.payment) - Number(nextInstallment.paidPrincipal || 0) - Number(nextInstallment.paidInterest || 0) + nextLateFee
-    : 0;
+  const { due: nextDue, lateFee: nextLateFee } = nextInstallment
+    ? installmentOutstanding(nextInstallment)
+    : { due: 0, lateFee: 0 };
   const paidCount = installments.filter((i) => i.status === 'PAID').length;
   const overdueCount = installments.filter((i) => i.status === 'OVERDUE').length;
   const originalPrincipal = Number(detail?.loan?.originalPrincipal || 0);

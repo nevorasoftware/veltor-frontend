@@ -81,8 +81,8 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
-      <div className="relative w-full max-w-lg glass-panel rounded-2xl border border-slate-700 bg-[#0F172A] p-6 sm:p-8 shadow-2xl text-slate-100">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm overflow-y-auto animate-fadeIn">
+      <div className="relative w-full max-w-lg glass-panel rounded-2xl border border-slate-700 bg-[#0F172A] p-5 sm:p-8 my-4 shadow-2xl text-slate-100">
         <button
           onClick={handleClose}
           className="absolute top-5 right-5 p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"

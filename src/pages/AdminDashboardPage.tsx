@@ -45,7 +45,7 @@ import { ListToolbar } from '../components/admin/ListToolbar';
 import type { DelinquencyItem } from '../api/client';
 import { usePublicSettings } from '../hooks/usePublicSettings';
 import { suggestedDownPayment, vehicleTitle } from '../utils/vehicles';
-import { addMonths, firstDueDateForDay } from '../utils/collections';
+import { addMonths, firstDueDateForDay, installmentOutstanding } from '../utils/collections';
 
 interface UploadedDocState {
   file: File;
@@ -479,8 +479,8 @@ export const AdminDashboardPage: React.FC = () => {
         ['PENDING', 'PARTIAL', 'OVERDUE'].includes(i.status),
       );
       if (next) {
-        const lateFee = Number(next.lateInterestAccrued) - Number(next.paidLateInterest);
-        const due = (Number(next.payment) - Number(next.paidPrincipal) - Number(next.paidInterest) + lateFee).toFixed(2);
+        const { due: dueAmount, lateFee } = installmentOutstanding(next);
+        const due = dueAmount.toFixed(2);
         setNextInstallmentInfo({ number: next.number, dueDate: next.dueDate, payment: due, lateFee, daysOverdue: next.daysOverdue ?? 0 });
         setPaymentAmount(due);
       }
@@ -1901,7 +1901,7 @@ export const AdminDashboardPage: React.FC = () => {
 
       {/* MODAL INTEGRAL: GESTIÓN DE PROSPECTO Y FORMALIZACIÓN A CRÉDITO ACTIVO */}
       {leadModalOpen && selectedLead && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
           <div className="relative w-full max-w-4xl glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-4 sm:p-8 shadow-2xl my-6 text-slate-100 space-y-6">
             <button
               onClick={() => setLeadModalOpen(false)}
@@ -1936,6 +1936,7 @@ export const AdminDashboardPage: React.FC = () => {
               >
                 1. Editar Datos y Seguimiento
               </button>
+              {selectedLead.status !== 'CONVERTED' && (
               <button
                 type="button"
                 onClick={() => setLeadModalTab('convert')}
@@ -1953,11 +1954,33 @@ export const AdminDashboardPage: React.FC = () => {
                   </span>
                 )}
               </button>
+              )}
             </div>
 
             {/* PESTAÑA 1: EDITAR DATOS Y SEGUIMIENTO DEL PROSPECTO */}
             {leadModalTab === 'info' && (
               <form onSubmit={handleSaveLeadInfo} className="space-y-5">
+                {selectedLead.status === 'CONVERTED' && (
+                  <div className="p-3.5 rounded-xl bg-sky-500/10 border border-sky-500/30 text-sky-100 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <span>
+                      Este prospecto ya se formalizó como crédito. Sus datos se muestran en solo lectura; el plazo, la prima
+                      y los pagos reales están en la pestaña Créditos.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLeadModalOpen(false);
+                        setActiveTab('loans');
+                        setLoanFilter('ALL');
+                        setLoanSearch(selectedLead.fullName || '');
+                      }}
+                      className="shrink-0 px-3 py-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 font-semibold cursor-pointer"
+                    >
+                      Ver crédito
+                    </button>
+                  </div>
+                )}
+                <fieldset disabled={selectedLead.status === 'CONVERTED'} className="space-y-5 disabled:opacity-80">
                 {leadSaveSuccess && (
                   <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4" />
@@ -1977,10 +2000,10 @@ export const AdminDashboardPage: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-slate-300 font-semibold mb-1">Teléfono Móvil *</label>
+                    <label className="block text-slate-300 font-semibold mb-1">Teléfono Móvil{selectedLead.status === 'CONVERTED' ? '' : ' *'}</label>
                     <input
                       type="text"
-                      required
+                      required={selectedLead.status !== 'CONVERTED'}
                       value={leadPhone}
                       onChange={(e) => setLeadPhone(e.target.value)}
                       className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white outline-none focus:border-white"
@@ -2030,6 +2053,7 @@ export const AdminDashboardPage: React.FC = () => {
                         ))}
                     </select>
                   </div>
+                  {selectedLead.status !== 'CONVERTED' && (<>
                   <div>
                     <label className="block text-slate-300 font-semibold mb-1">Plazo de Meses (Personalizado)</label>
                     <div className="relative flex items-center">
@@ -2057,6 +2081,7 @@ export const AdminDashboardPage: React.FC = () => {
                       />
                     </div>
                   </div>
+                  </>)}
                 </div>
 
                 <div>
@@ -2070,6 +2095,9 @@ export const AdminDashboardPage: React.FC = () => {
                   />
                 </div>
 
+                </fieldset>
+
+                {selectedLead.status !== 'CONVERTED' && (
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-800">
                   <button
                     type="submit"
@@ -2088,11 +2116,12 @@ export const AdminDashboardPage: React.FC = () => {
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
+                )}
               </form>
             )}
 
             {/* PESTAÑA 2: FORMALIZAR A CRÉDITO ACTIVO (CARGA DE 5 DOCUMENTOS OBLIGATORIOS) */}
-            {leadModalTab === 'convert' && (
+            {leadModalTab === 'convert' && selectedLead.status !== 'CONVERTED' && (
               <div className="space-y-6">
                 {conversionSuccessMsg ? (
                   <div className="p-6 rounded-2xl bg-emerald-950/30 border border-emerald-500/40 text-center space-y-4">
@@ -2960,7 +2989,7 @@ export const AdminDashboardPage: React.FC = () => {
                   )}
                   <div className="flex justify-between">
                     <span>Distribución:</span>
-                    <span className="text-emerald-400">Mora → Interés → Capital</span>
+                    <span className="text-emerald-400">Mora → Seguro → Interés → Capital</span>
                   </div>
                 </div>
 
@@ -2979,7 +3008,7 @@ export const AdminDashboardPage: React.FC = () => {
 
       {/* MODAL: REGISTRAR / EDITAR GASTO CONTABLE (PRODUCTO O SERVICIO) */}
       {expenseModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
           <div className="relative w-full max-w-2xl glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-4 sm:p-8 shadow-2xl my-6 text-slate-100 space-y-6">
             <button
               onClick={() => setExpenseModalOpen(false)}
