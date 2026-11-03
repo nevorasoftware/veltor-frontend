@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import {
   Car,
   Users,
@@ -39,8 +40,11 @@ import { formatDUI, formatNIT, isValidDUI, isValidNIT, compressAndReadFileAsBase
 import { clearSession, getUser, isSuperAdmin } from '../auth/session';
 import { AdminVehiclesTab } from '../components/admin/AdminVehiclesTab';
 import { MyCompanyTab } from '../components/admin/MyCompanyTab';
+import { DelinquencyCard } from '../components/admin/DelinquencyCard';
+import { ListToolbar } from '../components/admin/ListToolbar';
+import type { DelinquencyItem } from '../api/client';
 import { usePublicSettings } from '../hooks/usePublicSettings';
-import { suggestedDownPayment } from '../utils/vehicles';
+import { suggestedDownPayment, vehicleTitle } from '../utils/vehicles';
 import { addMonths, firstDueDateForDay } from '../utils/collections';
 
 interface UploadedDocState {
@@ -62,6 +66,20 @@ export const AdminDashboardPage: React.FC = () => {
   const [leads, setLeads] = useState<any[]>([]);
   const [loans, setLoans] = useState<any[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
+
+  // Mora a la fecha (la calcula el backend con el ledger)
+  const delinquencyQuery = useQuery({ queryKey: ['delinquency'], queryFn: () => api.getDelinquencySummary() });
+  const arrearsByLoan = useMemo(() => {
+    const map = new Map<string, DelinquencyItem>();
+    (delinquencyQuery.data?.items || []).forEach((it) => map.set(it.loanId, it));
+    return map;
+  }, [delinquencyQuery.data]);
+
+  // Buscadores y filtros de las listas largas
+  const [loanSearch, setLoanSearch] = useState('');
+  const [loanFilter, setLoanFilter] = useState<'ALL' | 'CURRENT' | 'ARREARS'>('ALL');
+  const [leadSearch, setLeadSearch] = useState('');
+  const [highlightLoanId, setHighlightLoanId] = useState<string | null>(null);
 
   // Configuración de Tasa Preferencial
   const [adminMonthlyRate, setAdminMonthlyRate] = useState<number>(0);
@@ -216,6 +234,7 @@ export const AdminDashboardPage: React.FC = () => {
       api.getAllVehiclesAdmin(),
       loadExpenses(),
     ]);
+    delinquencyQuery.refetch();
     const [m, ld, ln, vh] = results;
     if (m.status === 'fulfilled') setMetrics(m.value);
     if (ld.status === 'fulfilled') setLeads(ld.value || []);
@@ -613,6 +632,54 @@ export const AdminDashboardPage: React.FC = () => {
   };
 
   // Plazos permitidos por el producto financiero (en múltiplos de 12 meses, más el plazo actual)
+  const filteredLoans = useMemo(() => {
+    const q = loanSearch.trim().toLowerCase();
+    return loans.filter((ln) => {
+      const inArrears = arrearsByLoan.has(ln.id);
+      if (loanFilter === 'ARREARS' && !inArrears) return false;
+      if (loanFilter === 'CURRENT' && inArrears) return false;
+      if (!q) return true;
+      return [ln.code, ln.customer?.fullName, ln.customer?.dui, ln.vehicle?.brand, ln.vehicle?.model]
+        .filter(Boolean)
+        .some((v: string) => String(v).toLowerCase().includes(q));
+    });
+  }, [loans, loanSearch, loanFilter, arrearsByLoan]);
+
+  const filteredLeads = useMemo(() => {
+    const q = leadSearch.trim().toLowerCase();
+    if (!q) return leads;
+    return leads.filter((l) =>
+      [l.code, l.fullName, l.email, l.phone, l.status, l.vehicle?.brand, l.vehicle?.model]
+        .filter(Boolean)
+        .some((v: string) => String(v).toLowerCase().includes(q)),
+    );
+  }, [leads, leadSearch]);
+
+  const loanFilterOptions = [
+    { value: 'ALL' as const, label: 'Todos', count: loans.length },
+    { value: 'CURRENT' as const, label: 'Al día', count: loans.filter((l) => !arrearsByLoan.has(l.id)).length },
+    { value: 'ARREARS' as const, label: 'En mora', count: loans.filter((l) => arrearsByLoan.has(l.id)).length },
+  ];
+
+  /** Abre un crédito desde la ficha de mora: pestaña de créditos, filtrado y resaltado. */
+  const openLoanFromArrears = (loanId: string, loanCode: string) => {
+    setActiveTab('loans');
+    setLoanFilter('ALL');
+    setLoanSearch(loanCode);
+    setHighlightLoanId(loanId);
+    setTimeout(() => document.getElementById(`loan-${loanId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+  };
+
+  const arrearsBadge = (loanId: string) => {
+    const it = arrearsByLoan.get(loanId);
+    if (!it) return null;
+    return (
+      <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-rose-500/15 border border-rose-500/40 text-rose-300 whitespace-nowrap">
+        En mora · {it.overdueInstallments} cuota(s) · {formatMoney(it.totalDue)}
+      </span>
+    );
+  };
+
   // Límites de tasa del producto financiero de la empresa (en %)
   const rateBounds = useMemo(() => {
     const pct = (v: number | null | undefined) => (v != null ? Number((v * 100).toFixed(4)) : null);
@@ -877,9 +944,18 @@ export const AdminDashboardPage: React.FC = () => {
       {activeTab === 'company' && canEditCompany && <MyCompanyTab />}
 
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
+          <div className="lg:col-span-12">
+            <DelinquencyCard
+              data={delinquencyQuery.data}
+              isLoading={delinquencyQuery.isLoading}
+              error={delinquencyQuery.error as Error | null}
+              onOpenLoan={openLoanFromArrears}
+            />
+          </div>
+
           {/* Últimos Prospectos */}
-          <div className="lg:col-span-7 glass-panel rounded-2xl border border-slate-700/80 bg-[#0F172A]/90 p-6 space-y-4">
+          <div className="lg:col-span-7 min-w-0 glass-panel rounded-2xl border border-slate-700/80 bg-[#0F172A]/90 p-4 sm:p-6 space-y-4">
             <div className="flex items-center justify-between pb-4 border-b border-slate-800">
               <h3 className="text-base font-bold text-white">
                 Solicitudes de Financiamiento Recientes
@@ -892,15 +968,21 @@ export const AdminDashboardPage: React.FC = () => {
               </button>
             </div>
 
-            <div className="space-y-3">
-              {leads.slice(0, 4).map((l) => (
+            <ListToolbar search={leadSearch} onSearch={setLeadSearch} placeholder="Buscar por nombre, código, correo o vehículo" />
+            <div className="space-y-3 max-h-[32rem] overflow-y-auto pr-1">
+              {filteredLeads.length === 0 && (
+                <p className="text-center text-xs text-slate-400 py-6">
+                  {leads.length === 0 ? 'Aún no hay solicitudes.' : 'Ninguna solicitud coincide con la búsqueda.'}
+                </p>
+              )}
+              {filteredLeads.map((l) => (
                 <div
                   key={l.id}
                   className="p-4 rounded-xl bg-slate-800/60 border border-slate-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
                 >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-white text-sm">{l.fullName}</span>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-bold text-white text-sm break-words">{l.fullName}</span>
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                         l.status === 'CONVERTED'
                           ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
@@ -909,16 +991,16 @@ export const AdminDashboardPage: React.FC = () => {
                         {l.status === 'CONVERTED' ? 'Crédito Activo' : l.status}
                       </span>
                     </div>
-                    <p className="text-slate-400 mt-0.5">
+                    <p className="text-slate-400 mt-0.5 break-all">
                       {l.phone} · {l.email}
                     </p>
                     {l.vehicle && (
                       <p className="text-slate-300 font-medium mt-1">
-                        Vehículo: {l.vehicle.brand} {l.vehicle.model}
+                        Vehículo: {vehicleTitle(l.vehicle)}
                       </p>
                     )}
                   </div>
-                  <div className="text-right">
+                  <div className="flex sm:block items-center justify-between sm:text-right shrink-0">
                     <span className="text-[11px] text-slate-400 block font-mono">
                       {l.code}
                     </span>
@@ -935,7 +1017,7 @@ export const AdminDashboardPage: React.FC = () => {
           </div>
 
           {/* Cartera Activa y Registro Rápido de Cobros */}
-          <div className="lg:col-span-5 glass-panel rounded-2xl border border-slate-700/80 bg-[#0F172A]/90 p-6 space-y-4">
+          <div className="lg:col-span-5 min-w-0 glass-panel rounded-2xl border border-slate-700/80 bg-[#0F172A]/90 p-4 sm:p-6 space-y-4">
             <div className="flex items-center justify-between pb-4 border-b border-slate-800">
               <h3 className="text-base font-bold text-white">
                 {sections.loans} Activos
@@ -945,21 +1027,40 @@ export const AdminDashboardPage: React.FC = () => {
               </span>
             </div>
 
-            <div className="space-y-3">
-              {loans.map((ln) => (
+            <ListToolbar
+              search={loanSearch}
+              onSearch={setLoanSearch}
+              placeholder="Buscar crédito, cliente o DUI"
+              filter={loanFilter}
+              onFilter={setLoanFilter}
+              options={loanFilterOptions}
+            />
+
+            <div className="space-y-3 max-h-[32rem] overflow-y-auto pr-1">
+              {filteredLoans.length === 0 && (
+                <p className="text-center text-xs text-slate-400 py-6">
+                  {loans.length === 0 ? 'Aún no hay créditos formalizados.' : 'Ningún crédito coincide con el filtro.'}
+                </p>
+              )}
+              {filteredLoans.map((ln) => (
                 <div
                   key={ln.id}
-                  className="p-4 rounded-xl bg-slate-800/60 border border-slate-700/60 space-y-3 text-xs"
+                  className={`p-4 rounded-xl border space-y-3 text-xs ${
+                    arrearsByLoan.has(ln.id) ? 'bg-rose-950/30 border-rose-500/40' : 'bg-slate-800/60 border-slate-700/60'
+                  }`}
                 >
-                  <div className="flex justify-between items-start">
-                    <div>
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="min-w-0">
                       <span className="font-mono font-bold text-white">{ln.code}</span>
-                      <p className="text-slate-300 font-semibold">{ln.customer.fullName}</p>
-                      <p className="text-slate-400">{ln.vehicle.brand} {ln.vehicle.model} ({ln.vehicle.year})</p>
+                      <p className="text-slate-300 font-semibold break-words">{ln.customer.fullName}</p>
+                      <p className="text-slate-400">{vehicleTitle(ln.vehicle, { withYear: true })}</p>
                     </div>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                      {ln.status}
-                    </span>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                        {ln.status}
+                      </span>
+                      {arrearsBadge(ln.id)}
+                    </div>
                   </div>
 
                   <div className="flex justify-between pt-2 border-t border-slate-700/60">
@@ -993,7 +1094,7 @@ export const AdminDashboardPage: React.FC = () => {
 
       {/* Pestaña: Gestión de Prospectos (Leads) */}
       {activeTab === 'leads' && (
-        <div className="glass-panel rounded-2xl border border-slate-700/80 bg-[#0F172A]/90 p-6 space-y-6">
+        <div className="glass-panel rounded-2xl border border-slate-700/80 bg-[#0F172A]/90 p-4 sm:p-6 space-y-4 sm:space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
             <div>
               <h3 className="text-lg font-bold text-white">Pipeline de Prospectos Comerciales</h3>
@@ -1003,9 +1104,10 @@ export const AdminDashboardPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-slate-800 text-slate-200 uppercase font-bold text-[11px]">
+          <ListToolbar search={leadSearch} onSearch={setLeadSearch} placeholder="Buscar por nombre, código, correo, estado o vehículo" />
+          <div className="max-h-[70vh] overflow-auto rounded-xl border border-slate-800">
+            <table className="w-full min-w-[760px] text-left text-xs text-slate-300">
+              <thead className="sticky top-0 z-10 bg-slate-800 text-slate-200 uppercase font-bold text-[11px]">
                 <tr>
                   <th className="py-3 px-4">Código</th>
                   <th className="py-3 px-4">Prospecto</th>
@@ -1017,7 +1119,14 @@ export const AdminDashboardPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800">
-                {leads.map((l) => (
+                {filteredLeads.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-10 text-center text-slate-400">
+                      {leads.length === 0 ? 'Aún no hay prospectos.' : 'Ningún prospecto coincide con la búsqueda.'}
+                    </td>
+                  </tr>
+                )}
+                {filteredLeads.map((l) => (
                   <tr key={l.id} className="hover:bg-slate-800/40 transition-colors">
                     <td className="py-3.5 px-4 font-mono font-bold text-slate-300">{l.code}</td>
                     <td className="py-3.5 px-4 font-semibold text-white">{l.fullName}</td>
@@ -1026,7 +1135,7 @@ export const AdminDashboardPage: React.FC = () => {
                       <div className="text-slate-400 text-[11px]">{l.email}</div>
                     </td>
                     <td className="py-3.5 px-4">
-                      {l.vehicle ? `${l.vehicle.brand} ${l.vehicle.model}` : 'Interés general'}
+                      {l.vehicle ? vehicleTitle(l.vehicle) : 'Interés general'}
                     </td>
                     <td className="py-3.5 px-4">
                       <span
@@ -1075,7 +1184,7 @@ export const AdminDashboardPage: React.FC = () => {
 
       {/* Pestaña: Créditos y Amortización */}
       {activeTab === 'loans' && (
-        <div className="glass-panel rounded-2xl border border-slate-700/80 bg-[#0F172A]/90 p-6 space-y-6">
+        <div className="glass-panel rounded-2xl border border-slate-700/80 bg-[#0F172A]/90 p-4 sm:p-6 space-y-4 sm:space-y-6">
           <div className="flex items-center justify-between pb-4 border-b border-slate-800">
             <div>
               <h3 className="text-lg font-bold text-white">{sections.loans}</h3>
@@ -1103,34 +1212,53 @@ export const AdminDashboardPage: React.FC = () => {
             </div>
           )}
 
-          <div className="space-y-4">
+          <ListToolbar
+            search={loanSearch}
+            onSearch={(v) => {
+              setLoanSearch(v);
+              setHighlightLoanId(null);
+            }}
+            placeholder="Buscar crédito, cliente, DUI o vehículo"
+            filter={loanFilter}
+            onFilter={setLoanFilter}
+            options={loanFilterOptions}
+          />
+
+          <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
             {loans.length === 0 && (
               <p className="text-center text-xs text-slate-400 py-10">
                 Aún no hay créditos formalizados. Se crean al activar un prospecto con su expediente completo.
               </p>
             )}
-            {loans.map((ln) => (
+            {loans.length > 0 && filteredLoans.length === 0 && (
+              <p className="text-center text-xs text-slate-400 py-10">Ningún crédito coincide con el filtro.</p>
+            )}
+            {filteredLoans.map((ln) => (
               <div
                 key={ln.id}
-                className="p-6 rounded-2xl bg-slate-800/50 border border-slate-700 flex flex-col lg:flex-row lg:items-center justify-between gap-6"
+                id={`loan-${ln.id}`}
+                className={`p-4 sm:p-6 rounded-2xl border flex flex-col xl:flex-row xl:items-center justify-between gap-4 sm:gap-6 ${
+                  arrearsByLoan.has(ln.id) ? 'bg-rose-950/25 border-rose-500/40' : 'bg-slate-800/50 border-slate-700'
+                } ${highlightLoanId === ln.id ? 'ring-2 ring-brand-accent' : ''}`}
               >
-                <div className="space-y-2">
-                  <div className="flex items-center gap-3">
+                <div className="space-y-2 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                     <span className="font-mono text-base font-black text-white">{ln.code}</span>
                     <span className="px-2.5 py-0.5 rounded text-[10px] font-black uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
                       {ln.status}
                     </span>
+                    {arrearsBadge(ln.id)}
                   </div>
-                  <p className="text-sm font-bold text-slate-200">
+                  <p className="text-sm font-bold text-slate-200 break-words">
                     {ln.customer.fullName}
                     {ln.customer.dui ? ` · DUI: ${ln.customer.dui}` : ''}
                   </p>
                   <p className="text-xs text-slate-400">
-                    Garantía: {ln.vehicle.brand} {ln.vehicle.model} ({ln.vehicle.year}) · Plazo: {ln.termCount} meses
+                    Garantía: {vehicleTitle(ln.vehicle, { withYear: true })} · Plazo: {ln.termCount} meses
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-xs border-t lg:border-t-0 pt-4 lg:pt-0 border-slate-700">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 text-xs border-t xl:border-t-0 pt-4 xl:pt-0 border-slate-700">
                   <div>
                     <span className="text-slate-400 block font-semibold">Monto Original</span>
                     <span className="font-mono font-bold text-white text-sm">
@@ -1167,7 +1295,7 @@ export const AdminDashboardPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row items-center gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:flex xl:flex-col 2xl:grid 2xl:grid-cols-2 gap-2 xl:w-56 2xl:w-auto shrink-0">
                   <button
                     onClick={() => openPdf('schedule', ln.id)}
                     className="w-full sm:w-auto p-2.5 rounded-xl bg-slate-700/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-colors flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer"
@@ -1587,9 +1715,9 @@ export const AdminDashboardPage: React.FC = () => {
 
           {/* Tabla Contable de Gastos */}
           <div className="overflow-hidden rounded-3xl glass-panel border border-slate-700/80 bg-[#0F172A]/90 shadow-xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
+            <div className="max-h-[70vh] overflow-auto">
+              <table className="w-full min-w-[860px] text-left border-collapse text-xs">
+                <thead className="sticky top-0 z-10 bg-slate-900">
                   <tr className="border-b border-slate-800 bg-slate-900/60 text-slate-400 uppercase tracking-wider text-[10px] font-bold">
                     <th className="py-4 px-4 sm:px-6">Código / Fecha</th>
                     <th className="py-4 px-4">Clasificación</th>
@@ -1770,7 +1898,7 @@ export const AdminDashboardPage: React.FC = () => {
       {/* MODAL INTEGRAL: GESTIÓN DE PROSPECTO Y FORMALIZACIÓN A CRÉDITO ACTIVO */}
       {leadModalOpen && selectedLead && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
-          <div className="relative w-full max-w-4xl glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-6 sm:p-8 shadow-2xl my-6 text-slate-100 space-y-6">
+          <div className="relative w-full max-w-4xl glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-4 sm:p-8 shadow-2xl my-6 text-slate-100 space-y-6">
             <button
               onClick={() => setLeadModalOpen(false)}
               className="absolute top-5 right-5 z-10 p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800 border border-slate-700 transition-colors cursor-pointer"
@@ -1893,7 +2021,7 @@ export const AdminDashboardPage: React.FC = () => {
                         .filter((v) => v.status === 'AVAILABLE' || v.status === 'RESERVED' || v.id === leadVehicleId)
                         .map((v) => (
                           <option key={v.id} value={v.id}>
-                            {v.code} · {v.brand} {v.model} ({v.year}) - {formatMoney(v.salePrice)}
+                            {v.code} · {vehicleTitle(v, { withYear: true })} - {formatMoney(v.salePrice)}
                           </option>
                         ))}
                     </select>
@@ -2673,8 +2801,8 @@ export const AdminDashboardPage: React.FC = () => {
 
       {/* Modal de Registro de Pago / Abono Extraordinario */}
       {paymentModalOpen && selectedLoan && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="w-full max-w-lg glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-6 sm:p-8 shadow-2xl text-slate-100 space-y-6">
+        <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-lg glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-4 sm:p-8 my-4 shadow-2xl text-slate-100 space-y-6">
             <div className="flex items-center justify-between pb-4 border-b border-slate-800">
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
@@ -2848,7 +2976,7 @@ export const AdminDashboardPage: React.FC = () => {
       {/* MODAL: REGISTRAR / EDITAR GASTO CONTABLE (PRODUCTO O SERVICIO) */}
       {expenseModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
-          <div className="relative w-full max-w-2xl glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-6 sm:p-8 shadow-2xl my-6 text-slate-100 space-y-6">
+          <div className="relative w-full max-w-2xl glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-4 sm:p-8 shadow-2xl my-6 text-slate-100 space-y-6">
             <button
               onClick={() => setExpenseModalOpen(false)}
               className="absolute top-5 right-5 z-10 p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800 border border-slate-700 transition-colors cursor-pointer"
@@ -3148,7 +3276,7 @@ export const AdminDashboardPage: React.FC = () => {
 
       {/* MODAL: CONFIRMACIÓN DE ELIMINACIÓN DE GASTO */}
       {deleteExpenseId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
           <div className="w-full max-w-md glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-6 shadow-2xl text-slate-100 space-y-4">
             <div className="flex items-center gap-3 text-rose-400">
               <div className="p-2.5 rounded-2xl bg-rose-500/10 border border-rose-500/20">

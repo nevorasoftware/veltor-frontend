@@ -8,7 +8,7 @@ import { useTenant } from '../tenant/TenantContext';
 import { api } from '../api/client';
 import { usePublicSettings } from '../hooks/usePublicSettings';
 import { VehicleImage } from '../components/VehicleImage';
-import { TRANSMISSION_LABELS, estimatedInstallment, primaryImageUrl } from '../utils/vehicles';
+import { TRANSMISSION_LABELS, estimatedInstallment, primaryImageUrl, vehicleTitle } from '../utils/vehicles';
 
 export const HomePage: React.FC = () => {
   const [featuredVehicles, setFeaturedVehicles] = useState<any[]>([]);
@@ -111,7 +111,7 @@ export const HomePage: React.FC = () => {
               >
                 <div>
                   <div className="relative h-48 w-full overflow-hidden bg-slate-800">
-                    <VehicleImage src={primaryImageUrl(v)} alt={`${v.brand} ${v.model}`} />
+                    <VehicleImage src={primaryImageUrl(v)} alt={vehicleTitle(v)} />
                     <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-slate-900/80 backdrop-blur-md text-[11px] font-bold text-white border border-slate-700">
                       {v.type || 'Vehículo'} · {v.year}
                     </div>
@@ -120,7 +120,7 @@ export const HomePage: React.FC = () => {
                   <div className="p-5 space-y-3">
                     <div>
                       <h3 className="text-lg font-bold text-white tracking-wide">
-                        {v.brand} {v.model}
+                        {vehicleTitle(v)}
                       </h3>
                       <p className="text-xs text-slate-400">
                         {formatNumber(v.mileageKm)} km · {TRANSMISSION_LABELS[v.transmission] || v.transmission}

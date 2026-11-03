@@ -37,3 +37,10 @@ export function estimatedInstallment(vehicle: any, settings?: PublicSettings | n
 }
 
 export const primaryImageUrl = (vehicle: any): string | undefined => vehicle?.images?.[0]?.url;
+
+/** Título del vehículo; "Por definir" si aún no tiene marca ni modelo (carga parcial). */
+export function vehicleTitle(vehicle: any, opts: { withYear?: boolean } = {}): string {
+  const name = [vehicle?.brand, vehicle?.model].map((s) => (s ? String(s).trim() : '')).filter(Boolean).join(' ');
+  if (!name) return 'Por definir';
+  return opts.withYear && vehicle?.year ? `${name} (${vehicle.year})` : name;
+}

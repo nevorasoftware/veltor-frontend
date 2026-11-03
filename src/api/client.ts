@@ -163,6 +163,8 @@ export const api = {
   // Reportes y Dashboard
   getDashboardMetrics: () => request<any>('/reports/dashboard'),
   getLoansSummary: () => request<any[]>('/reports/loans'),
+  /** Créditos con cuotas vencidas y mora a hoy, calculado con el ledger en el backend. */
+  getDelinquencySummary: () => request<DelinquencySummary>('/reports/delinquency'),
 
   // Clientes
   getCustomers: (query = '') => request<any>(`/customers?${query}`),
@@ -255,3 +257,26 @@ export const api = {
   deletePlatformCompany: (id: string, confirmSlug: string) =>
     request<any>(`/platform/companies/${id}`, json('DELETE', { confirmSlug })),
 };
+
+/** Resumen de mora (GET /reports/delinquency). Montos como texto decimal. */
+export interface DelinquencyItem {
+  loanId: string;
+  loanCode: string;
+  customerName: string;
+  vehicleLabel?: string | null;
+  overdueInstallments: number;
+  daysOverdue: number;
+  overdueAmount: string | number;
+  lateFee: string | number;
+  totalDue: string | number;
+}
+
+export interface DelinquencySummary {
+  asOfDate: string;
+  loansInArrears: number;
+  totalOverdue: string | number;
+  totalOverdueInstallments?: number;
+  totalLateFees?: string | number;
+  totalInsurance?: string | number;
+  items: DelinquencyItem[];
+}

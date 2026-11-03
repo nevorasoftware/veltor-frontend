@@ -4,7 +4,7 @@ import { api } from '../../api/client';
 import { currencyCode, formatMoney, formatNumber } from '../../utils/format';
 import { compressAndReadFileAsBase64 } from '../../utils/formatters';
 import { VehicleImage } from '../VehicleImage';
-import { FUEL_LABELS, TRANSMISSION_LABELS, VEHICLE_STATUS_LABELS } from '../../utils/vehicles';
+import { FUEL_LABELS, TRANSMISSION_LABELS, VEHICLE_STATUS_LABELS, vehicleTitle } from '../../utils/vehicles';
 
 interface AdminVehiclesTabProps {
   vehicles: any[];
@@ -242,7 +242,7 @@ export const AdminVehiclesTab: React.FC<AdminVehiclesTabProps> = ({ vehicles, on
           {filtered.map((v) => (
             <div key={v.id} className="rounded-2xl overflow-hidden border border-slate-700 bg-slate-800/40 flex flex-col">
               <div className="relative h-40 bg-slate-800">
-                <VehicleImage src={v.images?.[0]?.url} alt={`${v.brand} ${v.model}`} />
+                <VehicleImage src={v.images?.[0]?.url} alt={vehicleTitle(v)} />
                 <span
                   className={`absolute top-2 left-2 px-2 py-0.5 rounded border text-[10px] font-black uppercase ${STATUS_STYLES[v.status] || ''}`}
                 >
@@ -257,7 +257,7 @@ export const AdminVehiclesTab: React.FC<AdminVehiclesTabProps> = ({ vehicles, on
               <div className="p-4 space-y-2 flex-1">
                 <div className="text-[10px] font-mono text-slate-500">{v.code}</div>
                 <h4 className="text-sm font-bold text-white">
-                  {v.brand} {v.model} ({v.year})
+                  {vehicleTitle(v, { withYear: true })}
                 </h4>
                 <p className="text-[11px] text-slate-400">
                   {v.type} · {TRANSMISSION_LABELS[v.transmission] || v.transmission} · {FUEL_LABELS[v.fuel] || v.fuel} ·{' '}

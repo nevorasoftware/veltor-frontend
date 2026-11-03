@@ -3,6 +3,7 @@ import { X, CheckCircle, Shield, Send, Car } from 'lucide-react';
 import { api } from '../api/client';
 import { formatMoney } from '../utils/format';
 import { useTenant } from '../tenant/TenantContext';
+import { vehicleTitle } from '../utils/vehicles';
 
 interface LeadModalProps {
   isOpen: boolean;
@@ -63,7 +64,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
         fullName,
         phone,
         email,
-        message: message || (vehicle ? `Interés en financiar ${vehicle.brand} ${vehicle.model} (${vehicle.year})` : 'Solicitud de financiamiento general'),
+        message: message || (vehicle ? `Interés en financiar ${vehicleTitle(vehicle, { withYear: true })}` : 'Solicitud de financiamiento general'),
         source: vehicle ? 'CATALOG_REQUEST' : 'SIMULATOR_LEAD',
         vehicleId: vehicle?.id,
         estimatedDown: initialTerms?.down,
@@ -116,7 +117,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
                 {tenant.name} · Solicitud de Financiamiento
               </span>
               <h3 className="text-xl font-extrabold text-white">
-                {vehicle ? `${vehicle.brand} ${vehicle.model} ${vehicle.year}` : 'Solicita tu Financiamiento'}
+                {vehicle ? vehicleTitle(vehicle, { withYear: true }) : 'Solicita tu Financiamiento'}
               </h3>
               {vehicle ? (
                 <div className="flex items-center gap-2 mt-1 text-xs text-slate-300 font-medium">

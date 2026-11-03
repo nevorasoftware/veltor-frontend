@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { formatMoney, formatDate } from '../utils/format';
 import { useTenant } from '../tenant/TenantContext';
+import { vehicleTitle } from '../utils/vehicles';
 import { api } from '../api/client';
 import { clearSession } from '../auth/session';
 
@@ -118,7 +119,7 @@ export const ClientPortalPage: React.FC = () => {
           >
             {customer.loans.map((l: any) => (
               <option key={l.id} value={l.id}>
-                {l.code} · {l.vehicle.brand} {l.vehicle.model}
+                {l.code} · {vehicleTitle(l.vehicle)}
               </option>
             ))}
           </select>
@@ -180,7 +181,7 @@ export const ClientPortalPage: React.FC = () => {
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Vehículo Financiado</span>
                 <h3 className="text-xl font-bold text-white">
-                  {loan.vehicle.brand} {loan.vehicle.model} ({loan.vehicle.year})
+                  {vehicleTitle(loan.vehicle, { withYear: true })}
                 </h3>
                 <p className="text-xs text-slate-400 font-mono">Contrato: {loan.code}</p>
               </div>

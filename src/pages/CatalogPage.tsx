@@ -7,7 +7,7 @@ import { useTenant } from '../tenant/TenantContext';
 import { api } from '../api/client';
 import { usePublicSettings } from '../hooks/usePublicSettings';
 import { VehicleImage } from '../components/VehicleImage';
-import { TRANSMISSION_LABELS, estimatedInstallment, primaryImageUrl, suggestedDownPayment } from '../utils/vehicles';
+import { TRANSMISSION_LABELS, estimatedInstallment, primaryImageUrl, suggestedDownPayment, vehicleTitle } from '../utils/vehicles';
 
 export const CatalogPage: React.FC = () => {
   const [vehicles, setVehicles] = useState<any[]>([]);
@@ -177,7 +177,7 @@ export const CatalogPage: React.FC = () => {
               >
                 <div>
                   <div className="relative h-52 w-full overflow-hidden bg-slate-800">
-                    <VehicleImage src={primaryImageUrl(v)} alt={`${v.brand} ${v.model}`} />
+                    <VehicleImage src={primaryImageUrl(v)} alt={vehicleTitle(v)} />
                     <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-slate-900/80 backdrop-blur-md text-[11px] font-bold text-white border border-slate-700">
                       {v.type || 'Vehículo'} · {v.year}
                     </div>
@@ -189,7 +189,7 @@ export const CatalogPage: React.FC = () => {
                   <div className="p-6 space-y-4">
                     <div>
                       <h3 className="text-xl font-bold text-white tracking-wide">
-                        {v.brand} {v.model}
+                        {vehicleTitle(v)}
                       </h3>
                       <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
                         <span>{formatNumber(v.mileageKm)} km</span>
@@ -266,15 +266,15 @@ export const CatalogPage: React.FC = () => {
               {/* Galería e Info Básica */}
               <div className="xl:col-span-5 space-y-4">
                 <div className="h-64 sm:h-72 rounded-2xl overflow-hidden bg-slate-800 border border-slate-700">
-                  <VehicleImage src={primaryImageUrl(detailVehicle)} alt={`${detailVehicle.brand} ${detailVehicle.model}`} />
+                  <VehicleImage src={primaryImageUrl(detailVehicle)} alt={vehicleTitle(detailVehicle)} />
                 </div>
 
                 <div>
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                    {detailVehicle.brand} · Año {detailVehicle.year}
+                    {detailVehicle.brand || 'Marca por definir'} · Año {detailVehicle.year || 'por definir'}
                   </span>
                   <h2 className="text-2xl sm:text-3xl font-black text-white">
-                    {detailVehicle.brand} {detailVehicle.model}
+                    {vehicleTitle(detailVehicle)}
                   </h2>
                   <p className="text-2xl font-extrabold text-emerald-400 mt-1 font-mono">
                     {formatMoney(detailVehicle.salePrice)}
@@ -301,7 +301,7 @@ export const CatalogPage: React.FC = () => {
                 <FinancingSimulator
                   initialPrice={detailVehicle.salePrice}
                   initialDownPayment={suggestedDownPayment(detailVehicle, settings)}
-                  vehicleName={`${detailVehicle.brand} ${detailVehicle.model}`}
+                  vehicleName={vehicleTitle(detailVehicle)}
                   onApplyLead={(summary) => {
                     setSimulationSummary(summary);
                     setLeadModalOpen(true);
