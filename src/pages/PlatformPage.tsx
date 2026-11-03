@@ -12,6 +12,7 @@ import {
   Plus,
   Power,
   UserPlus,
+  Trash2,
   X,
 } from 'lucide-react';
 import { api, resolveApiAssetUrl } from '../api/client';
@@ -82,6 +83,62 @@ const AddAdminDialog: React.FC<{ company: Company; onClose: () => void; onDone: 
   );
 };
 
+/** Borrado definitivo de una empresa: exige escribir su slug (nunca la empresa por defecto). */
+const DeleteCompanyDialog: React.FC<{ company: Company; onClose: () => void; onDone: (msg: string) => void }> = ({
+  company,
+  onClose,
+  onDone,
+}) => {
+  const [confirmSlug, setConfirmSlug] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const matches = confirmSlug.trim() === company.slug;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!matches) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await api.deletePlatformCompany(company.id, confirmSlug.trim());
+      onDone(`Empresa ${company.name} eliminada con todos sus datos.`);
+    } catch (err: any) {
+      setError(err.message || 'No se pudo eliminar la empresa.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <form onSubmit={submit} className="relative w-full max-w-md rounded-2xl border border-rose-500/40 bg-[#0F172A] p-6 space-y-4 shadow-2xl">
+        <button type="button" onClick={onClose} aria-label="Cerrar" className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer">
+          <X className="w-4 h-4" />
+        </button>
+        <div>
+          <h3 className="text-base font-bold text-rose-200">Eliminar {company.name}</h3>
+          <p className="text-xs text-slate-400 mt-1">
+            Se borran de forma definitiva todos sus datos (clientes, vehículos, créditos, pagos, usuarios) y sus carpetas de
+            Drive. No se puede deshacer.
+          </p>
+        </div>
+        <FormField label={`Escriba "${company.slug}" para confirmar`}>
+          <input value={confirmSlug} onChange={(e) => setConfirmSlug(e.target.value)} autoFocus className={`${companyInputClass} font-mono`} />
+        </FormField>
+        {error && <p className="text-xs text-rose-300">{error}</p>}
+        <button
+          type="submit"
+          disabled={!matches || deleting}
+          className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+          <span>{deleting ? 'Eliminando...' : 'Eliminar definitivamente'}</span>
+        </button>
+      </form>
+    </div>
+  );
+};
+
 /** Panel de plataforma del SUPERADMIN: empresas, marca, estado, administradores y modo soporte. */
 export const PlatformPage: React.FC = () => {
   const navigate = useNavigate();
@@ -92,6 +149,7 @@ export const PlatformPage: React.FC = () => {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adminFor, setAdminFor] = useState<Company | null>(null);
+  const [deleteFor, setDeleteFor] = useState<Company | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const companiesQuery = useQuery<Company[]>({ queryKey: ['platform-companies'], queryFn: () => api.getPlatformCompanies() });
@@ -287,11 +345,31 @@ export const PlatformPage: React.FC = () => {
                   >
                     <LifeBuoy className="w-3.5 h-3.5" /> Entrar como soporte
                   </button>
+                  {!c.isDefault && (
+                    <button
+                      onClick={() => setDeleteFor(c)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600/20 border border-rose-500/50 text-rose-200 hover:bg-rose-600/30 text-xs font-semibold cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                    </button>
+                  )}
                 </div>
               </div>
             </article>
           ))}
         </div>
+      )}
+
+      {deleteFor && (
+        <DeleteCompanyDialog
+          company={deleteFor}
+          onClose={() => setDeleteFor(null)}
+          onDone={(msg) => {
+            setDeleteFor(null);
+            setNotice(msg);
+            companiesQuery.refetch();
+          }}
+        />
       )}
 
       {adminFor && (

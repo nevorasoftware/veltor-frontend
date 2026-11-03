@@ -251,4 +251,7 @@ export const api = {
     request<Company>(`/platform/companies/${id}/status`, json('PATCH', { isActive })),
   createPlatformCompanyAdmin: (id: string, payload: { email: string; fullName: string }) =>
     request<any>(`/platform/companies/${id}/admins`, json('POST', payload)),
+  /** Borra la empresa y todos sus datos; confirmSlug debe ser igual a su slug. */
+  deletePlatformCompany: (id: string, confirmSlug: string) =>
+    request<any>(`/platform/companies/${id}`, json('DELETE', { confirmSlug })),
 };
