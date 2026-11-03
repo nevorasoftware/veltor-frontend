@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Car, Check } from 'lucide-react';
 import { LeadModal } from '../components/LeadModal';
 import { FinancingSimulator } from '../components/FinancingSimulator';
-import { SECTIONS, formatUSD } from '../config/branding';
+import { formatMoney, formatNumber } from '../utils/format';
+import { useTenant } from '../tenant/TenantContext';
 import { api } from '../api/client';
 import { usePublicSettings } from '../hooks/usePublicSettings';
 import { VehicleImage } from '../components/VehicleImage';
@@ -17,6 +18,7 @@ export const CatalogPage: React.FC = () => {
   const [maxPrice, setMaxPrice] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const { data: settings } = usePublicSettings();
+  const { tenant, sections } = useTenant();
 
   // Modal de detalle y cotización
   const [detailVehicle, setDetailVehicle] = useState<any | null>(null);
@@ -54,14 +56,14 @@ export const CatalogPage: React.FC = () => {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
       {/* Encabezado */}
       <div>
-        <span className="text-xs font-bold uppercase tracking-widest text-slate-400">
-          Catálogo Oficial
+        <span className="text-xs font-bold uppercase tracking-widest text-brand-accent">
+          Catálogo · {tenant.name}
         </span>
         <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-          {SECTIONS.catalog}
+          {sections.catalog}
         </h1>
         <p className="text-xs sm:text-sm text-slate-400 max-w-2xl mt-1">
-          Todos los vehículos cuentan con inspección técnica certificada, historial legal transparente y opciones de financiamiento con cuotas niveladas.
+          Explora el inventario disponible y simula el financiamiento de cada vehículo con cuotas niveladas.
         </p>
       </div>
 
@@ -129,7 +131,7 @@ export const CatalogPage: React.FC = () => {
         <div>
           <div className="flex justify-between text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
             <span>Precio Máx.</span>
-            <span className="text-white font-mono">{formatUSD(effectiveMaxPrice)}</span>
+            <span className="text-white font-mono">{formatMoney(effectiveMaxPrice)}</span>
           </div>
           <input
             type="range"
@@ -190,7 +192,7 @@ export const CatalogPage: React.FC = () => {
                         {v.brand} {v.model}
                       </h3>
                       <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
-                        <span>{Number(v.mileageKm || 0).toLocaleString('es-SV')} km</span>
+                        <span>{formatNumber(v.mileageKm)} km</span>
                         <span>·</span>
                         <span>{v.color}</span>
                         <span>·</span>
@@ -204,7 +206,7 @@ export const CatalogPage: React.FC = () => {
                           Precio Contado
                         </span>
                         <span className="text-2xl font-black text-white">
-                          {formatUSD(v.salePrice)}
+                          {formatMoney(v.salePrice)}
                         </span>
                       </div>
                       {cuotaEstimada !== null && (
@@ -213,7 +215,7 @@ export const CatalogPage: React.FC = () => {
                             Cuota Estimada
                           </span>
                           <span className="text-sm font-extrabold text-emerald-400">
-                            {formatUSD(cuotaEstimada)}/mes
+                            {formatMoney(cuotaEstimada)}/mes
                           </span>
                         </div>
                       )}
@@ -238,7 +240,7 @@ export const CatalogPage: React.FC = () => {
                       setSimulationSummary(null);
                       setLeadModalOpen(true);
                     }}
-                    className="flex-1 py-2.5 px-3 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-white text-slate-900 transition-colors shadow"
+                    className="flex-1 py-2.5 px-3 rounded-xl text-xs font-bold uppercase tracking-wider btn-brand transition-colors shadow"
                   >
                     Solicitar
                   </button>
@@ -275,7 +277,7 @@ export const CatalogPage: React.FC = () => {
                     {detailVehicle.brand} {detailVehicle.model}
                   </h2>
                   <p className="text-2xl font-extrabold text-emerald-400 mt-1 font-mono">
-                    {formatUSD(detailVehicle.salePrice)}
+                    {formatMoney(detailVehicle.salePrice)}
                   </p>
                 </div>
 

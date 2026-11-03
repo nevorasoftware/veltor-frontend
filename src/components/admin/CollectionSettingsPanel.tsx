@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AlertCircle, BellRing, CheckCircle2, ExternalLink, HardDrive, Play } from 'lucide-react';
 import { api } from '../../api/client';
 import type { CollectionSettings, LateFeeType, StorageStatus } from '../../api/client';
+import { currencyCode, formatMoney } from '../../utils/format';
 
 export const LATE_FEE_LABELS: Record<LateFeeType, string> = {
   PER_DAY: 'Mora por días de atraso',
@@ -83,7 +84,7 @@ export const CollectionSettingsPanel: React.FC = () => {
     const day = form.defaultPaymentDay ?? 10;
     const reminder = day - form.reminderDaysBefore;
     const moraFrom = day + form.graceDays + 1;
-    return `Ej.: cuota que vence el ${day}: recordatorio el día ${reminder >= 1 ? reminder : `${form.reminderDaysBefore} días antes`}, gracia hasta el ${day + form.graceDays} y mora desde el ${moraFrom} (${LATE_FEE_LABELS.PER_DAY.toLowerCase()}: $${form.lateFeePerDayAmount.toFixed(2)} × día; cuota de mora: $${form.lateFeePerInstallmentAmount.toFixed(2)}).`;
+    return `Ej.: cuota que vence el ${day}: recordatorio el día ${reminder >= 1 ? reminder : `${form.reminderDaysBefore} días antes`}, gracia hasta el ${day + form.graceDays} y mora desde el ${moraFrom} (${LATE_FEE_LABELS.PER_DAY.toLowerCase()}: ${formatMoney(form.lateFeePerDayAmount)} × día; cuota de mora: ${formatMoney(form.lateFeePerInstallmentAmount)}).`;
   })();
 
   return (
@@ -135,10 +136,10 @@ export const CollectionSettingsPanel: React.FC = () => {
               className={inputClass}
             />
           </Field>
-          <Field label="Mora por día de atraso (USD)">
+          <Field label={`Mora por día de atraso (${currencyCode()})`}>
             <input type="number" min={0} step="0.01" value={form.lateFeePerDayAmount} onChange={(e) => set('lateFeePerDayAmount', num(e.target.value))} className={inputClass} />
           </Field>
-          <Field label="Cuota de mora (USD)" hint="Monto fijo por cada cuota vencida">
+          <Field label={`Cuota de mora (${currencyCode()})`} hint="Monto fijo por cada cuota vencida">
             <input type="number" min={0} step="0.01" value={form.lateFeePerInstallmentAmount} onChange={(e) => set('lateFeePerInstallmentAmount', num(e.target.value))} className={inputClass} />
           </Field>
           <Field label="Tipo de mora sugerido" hint="Se puede cambiar en cada crédito">
@@ -159,7 +160,7 @@ export const CollectionSettingsPanel: React.FC = () => {
             type="button"
             onClick={save}
             disabled={saving}
-            className="flex-1 py-3 px-6 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-white text-slate-950 transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            className="flex-1 py-3 px-6 rounded-xl text-xs font-bold uppercase tracking-wider btn-brand transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
           >
             <span>{saving ? 'Guardando...' : 'Guardar Parámetros de Cobranza'}</span>
             <CheckCircle2 className="w-4 h-4" />

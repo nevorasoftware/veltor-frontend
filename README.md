@@ -42,7 +42,7 @@
 - **Estilos:** Tailwind CSS v4 + Vanilla CSS tokens + Glassmorphism
 - **Iconografía:** Lucide React
 - **Enrutamiento:** React Router DOM v7
-- **Cliente API:** Módulo `api/client.ts` con manejo de tokens JWT, fallback a demostración y endpoints PDF
+- **Cliente API:** Módulo `api/client.ts` con manejo de tokens JWT, headers de empresa y endpoints PDF
 - **Servidor Web:** Nginx Alpine para producción
 
 ---
@@ -75,11 +75,14 @@ El proyecto cuenta con un `Dockerfile` multi-etapa y un servidor web Nginx con c
 
 ## Variables de entorno
 
-Ver `.env.example`. En Railway se pasan como variables del servicio (se inyectan en el build de Vite):
+Ver `.env.example`. La única variable es `VITE_API_URL` (URL de la API con prefijo `/api/v1`), que se inyecta en el build de Vite.
 
-- `VITE_API_URL`: URL de la API con prefijo `/api/v1`.
-- `VITE_CONTACT_PHONE`, `VITE_CONTACT_EMAIL`, `VITE_CONTACT_HOURS`: contacto del pie de página (si están vacíos no se muestran).
-- `VITE_BANK_ACCOUNTS`, `VITE_BANK_ACCOUNT_HOLDER`, `VITE_PAYMENTS_EMAIL`, `VITE_PAYMENTS_WHATSAPP`: instrucciones de pago del portal del cliente.
+## Multiempresa
 
-El sitio no incluye datos de demostración: el catálogo, los créditos y los gastos provienen únicamente de la API.
-El inventario se administra desde **Panel → Vehículos**.
+- Al iniciar, `TenantProvider` (`src/tenant/`) carga `GET /public/tenant` y aplica el nombre, el logo, el favicon, el título y los colores de la empresa como variables CSS (`--brand-primary`, `--brand-secondary`, `--brand-accent`). Los componentes los leen con `useTenant()`.
+- La empresa se resuelve por `?empresa=slug` (se guarda en la pestaña y viaja en el header `X-Tenant`), por el dominio o, en su defecto, la empresa por defecto. Con sesión iniciada manda la empresa del usuario.
+- Los montos, fechas y zona horaria usan el `locale`, la `currency` y el `timezone` de la empresa (`src/utils/format.ts`).
+- El SUPERADMIN entra a `/plataforma` para crear y editar empresas, activar o desactivar, registrar administradores y "Entrar como soporte" (header `X-Company-Id`, con un aviso visible).
+- El ADMIN de cada empresa edita su marca y contactos en **Panel → Mi empresa**.
+
+El sitio no incluye datos de demostración: la marca, los contactos, el catálogo, los parámetros del simulador, los créditos y los gastos provienen únicamente de la API. El contrato está en `docs/MULTITENANT-CONTRATO.md`.

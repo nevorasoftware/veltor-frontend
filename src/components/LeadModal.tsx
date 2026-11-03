@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { X, CheckCircle, Shield, Send, Car } from 'lucide-react';
 import { api } from '../api/client';
-import { formatUSD } from '../config/branding';
+import { formatMoney } from '../utils/format';
+import { useTenant } from '../tenant/TenantContext';
 
 interface LeadModalProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ interface LeadModalProps {
 }
 
 export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, initialTerms }) => {
+  const { tenant } = useTenant();
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -102,7 +104,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
             </div>
             <button
               onClick={handleClose}
-              className="mt-4 px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-white text-slate-900 transition-colors"
+              className="mt-4 px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider btn-brand transition-colors"
             >
               Cerrar
             </button>
@@ -110,8 +112,8 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
         ) : (
           <div>
             <div className="mb-6">
-              <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
-                VELTOR · Solicitud de Financiamiento
+              <span className="text-[10px] font-bold tracking-widest text-brand-accent uppercase">
+                {tenant.name} · Solicitud de Financiamiento
               </span>
               <h3 className="text-xl font-extrabold text-white">
                 {vehicle ? `${vehicle.brand} ${vehicle.model} ${vehicle.year}` : 'Solicita tu Financiamiento'}
@@ -119,17 +121,17 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
               {vehicle ? (
                 <div className="flex items-center gap-2 mt-1 text-xs text-slate-300 font-medium">
                   <Car className="w-4 h-4 text-slate-400" />
-                  <span>Precio: {formatUSD(vehicle.salePrice)}</span>
+                  <span>Precio: {formatMoney(vehicle.salePrice)}</span>
                   {initialTerms?.installment && (
                     <span className="text-emerald-400 font-semibold">
-                      · Cuota estimada: {formatUSD(initialTerms.installment)}/mes
+                      · Cuota estimada: {formatMoney(initialTerms.installment)}/mes
                     </span>
                   )}
                 </div>
               ) : initialTerms ? (
                 <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs text-slate-300 font-medium">
-                  {initialTerms.price && <span>Precio: {formatUSD(initialTerms.price)}</span>}
-                  {initialTerms.down !== undefined && <span>· Prima: {formatUSD(initialTerms.down)}</span>}
+                  {initialTerms.price && <span>Precio: {formatMoney(initialTerms.price)}</span>}
+                  {initialTerms.down !== undefined && !!initialTerms.price && <span>· Prima: {formatMoney(initialTerms.down)}</span>}
                   {initialTerms.term && <span>· Plazo: {initialTerms.term} meses</span>}
                   {initialTerms.monthlyRate !== undefined && (
                     <span className="text-cyan-400 font-semibold">
@@ -138,7 +140,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
                   )}
                   {initialTerms.installment && (
                     <span className="text-emerald-400 font-semibold">
-                      · Cuota: {formatUSD(initialTerms.installment)}/mes
+                      · Cuota: {formatMoney(initialTerms.installment)}/mes
                     </span>
                   )}
                 </div>
@@ -161,7 +163,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
                   required
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Ej. Roberto Sánchez Martínez"
+                  placeholder="Nombres y apellidos"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-slate-400 transition-colors"
                 />
               </div>
@@ -176,7 +178,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
                     required
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="Ej. 7700-1122"
+                    placeholder="Número de contacto"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-slate-400 transition-colors"
                   />
                 </div>
@@ -189,7 +191,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="correo@ejemplo.com"
+                    placeholder="tu correo electrónico"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-slate-400 transition-colors"
                   />
                 </div>
@@ -224,7 +226,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-white text-slate-900 transition-all shadow-md disabled:opacity-50"
+                className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-bold uppercase tracking-wider btn-brand transition-all shadow-md disabled:opacity-50"
               >
                 <Send className="w-4 h-4 text-slate-900" />
                 <span>{loading ? 'Enviando Solicitud...' : 'Enviar Solicitud sin Compromiso'}</span>

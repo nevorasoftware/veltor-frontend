@@ -3,6 +3,12 @@
 const TOKEN_KEY = 'veltor_token';
 const USER_KEY = 'veltor_user';
 
+export interface SessionCompany {
+  id: string;
+  slug: string;
+  name: string;
+}
+
 export interface SessionUser {
   id: string;
   email: string;
@@ -10,6 +16,22 @@ export interface SessionUser {
   role: string;
   customerId?: string | null;
   mustChangePass?: boolean;
+  /** Empresa del usuario; null para el SUPERADMIN de plataforma. */
+  companyId?: string | null;
+  company?: SessionCompany | null;
+}
+
+type Listener = () => void;
+const listeners = new Set<Listener>();
+
+/** Avisa a quien dependa de la sesión (p. ej. la empresa activa) que esta cambió. */
+export function subscribeSession(listener: Listener): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function emit() {
+  listeners.forEach((l) => l());
 }
 
 export function getToken(): string | null {
@@ -28,16 +50,19 @@ export function getUser(): SessionUser | null {
 export function saveSession(token: string, user: SessionUser) {
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
+  emit();
 }
 
 export function updateUser(patch: Partial<SessionUser>) {
   const user = getUser();
   if (user) localStorage.setItem(USER_KEY, JSON.stringify({ ...user, ...patch }));
+  emit();
 }
 
 export function clearSession() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  emit();
 }
 
 /** Lee la expiración del JWT sin validarlo (la validación real la hace el backend). */
@@ -56,3 +81,12 @@ export function hasValidSession(): boolean {
 }
 
 export const isCustomer = (user: SessionUser | null) => user?.role === 'CUSTOMER';
+export const isSuperAdmin = (user: SessionUser | null) => user?.role === 'SUPERADMIN';
+
+/** Ruta de inicio según el rol después del login. */
+export function homePathFor(user: SessionUser | null): string {
+  if (!user) return '/login';
+  if (isSuperAdmin(user)) return '/plataforma';
+  if (isCustomer(user)) return '/portal';
+  return '/admin';
+}

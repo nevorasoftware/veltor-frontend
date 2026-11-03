@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { FinancingSimulator } from '../components/FinancingSimulator';
 import { LeadModal } from '../components/LeadModal';
-import { SECTIONS } from '../config/branding';
+import { useTenant } from '../tenant/TenantContext';
 import { ShieldCheck, FileSpreadsheet, Percent } from 'lucide-react';
 
 export const SimulatorPage: React.FC = () => {
+  const { tenant, sections } = useTenant();
   const [leadModalOpen, setLeadModalOpen] = useState(false);
   const [simulationSummary, setSimulationSummary] = useState<any>(null);
 
@@ -17,11 +18,11 @@ export const SimulatorPage: React.FC = () => {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-12">
       {/* Encabezado */}
       <div className="max-w-3xl">
-        <span className="text-xs font-bold uppercase tracking-widest text-slate-400">
-          Motor Financiero VELTOR
+        <span className="text-xs font-bold uppercase tracking-widest text-brand-accent">
+          Motor financiero · {tenant.name}
         </span>
         <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-          {SECTIONS.simulator}
+          {sections.simulator}
         </h1>
         <p className="text-xs sm:text-sm text-slate-400 mt-2 leading-relaxed">
           Calcula con total transparencia tu cuota nivelada, los intereses totales y proyecta la amortización completa de tu crédito vehicular utilizando el método francés con precisión decimal bancaria.

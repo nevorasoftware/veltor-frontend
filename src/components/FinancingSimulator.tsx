@@ -8,9 +8,11 @@ import {
   Calendar,
   Percent,
 } from 'lucide-react';
-import { formatUSD, formatDateSV, todayLocalISO, addMonthsISO, levelPayment } from '../config/branding';
+import { useQuery } from '@tanstack/react-query';
+import { formatMoney, formatDate, todayLocalISO, addMonthsISO, levelPayment, currencySymbol } from '../utils/format';
 import { api } from '../api/client';
 import { usePublicSettings } from '../hooks/usePublicSettings';
+import { useTenant } from '../tenant/TenantContext';
 
 interface FinancingSimulatorProps {
   // La API serializa los montos decimales como texto, por eso se aceptan ambos tipos
@@ -20,7 +22,12 @@ interface FinancingSimulatorProps {
   onApplyLead?: (summary: { price: number; down: number; term: number; installment: number; monthlyRate?: number }) => void;
 }
 
-const DEFAULT_SIMULATION_PRICE = 20000;
+/** Plazos sugeridos: múltiplos de 12 dentro del rango del producto, más los extremos. */
+function termChoices(min: number, max: number): number[] {
+  const opts = new Set<number>([min, max]);
+  for (let t = Math.ceil(min / 12) * 12; t <= max; t += 12) opts.add(t);
+  return [...opts].filter((t) => t >= min && t <= max && t > 0).sort((a, b) => a - b).slice(0, 8);
+}
 
 export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
   initialPrice,
@@ -28,19 +35,41 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
   vehicleName,
   onApplyLead,
 }) => {
-  const { data: settings } = usePublicSettings();
-  const minDownPercent = settings?.minDownPercent ?? 15;
-  const basePrice = Number(initialPrice) > 0 ? Number(initialPrice) : DEFAULT_SIMULATION_PRICE;
+  const { tenant } = useTenant();
+  const { data: settings, isLoading: settingsLoading } = usePublicSettings();
+  const symbol = currencySymbol();
+
+  // Sin vehículo seleccionado se toma como referencia el precio del vehículo publicado más reciente
+  const hasInitialPrice = Number(initialPrice) > 0;
+  const referenceQuery = useQuery({
+    queryKey: ['simulator-reference-vehicle'],
+    queryFn: () => api.getVehicles('limit=1'),
+    enabled: !hasInitialPrice,
+    staleTime: 5 * 60 * 1000,
+  });
+  const referencePrice = Number(referenceQuery.data?.items?.[0]?.salePrice) || 0;
+
+  // Límites del producto financiero de la empresa (Parámetros y Tasas)
+  const minDownPercent = settings?.minDownPercent ?? 0;
+  const minTerm = settings?.minTermMonths ?? 1;
+  const maxTerm = settings?.maxTermMonths ?? Math.max(minTerm, settings?.defaultTermMonths ?? minTerm);
+  const officialRate = settings?.preferentialMonthlyRate ? Number((settings.preferentialMonthlyRate * 100).toFixed(4)) : null;
+  const minRate = settings?.minMonthlyRate != null ? Number((settings.minMonthlyRate * 100).toFixed(4)) : 0;
+  const maxRate =
+    settings?.maxMonthlyRate != null ? Number((settings.maxMonthlyRate * 100).toFixed(4)) : Math.max(minRate, (officialRate ?? 0) * 2);
+  const terms = useMemo(() => termChoices(minTerm, maxTerm), [minTerm, maxTerm]);
+
+  const basePrice = hasInitialPrice ? Number(initialPrice) : referencePrice;
   const baseDown = Number(initialDownPayment) > 0 ? Number(initialDownPayment) : Math.round((basePrice * minDownPercent) / 100);
 
   // 1. Estados principales de entrada
   const [price, setPrice] = useState<number>(basePrice);
   const [downPayment, setDownPayment] = useState<number>(baseDown);
-  const [termMonths, setTermMonths] = useState<number>(36);
+  const [termMonths, setTermMonths] = useState<number>(settings?.defaultTermMonths ?? 0);
 
-  // 2. Tasa de interés mensual parametrizable (por defecto toma la tasa oficial del sistema)
-  const [monthlyRatePercent, setMonthlyRatePercent] = useState<number>(1.5);
-  const [defaultSystemRate, setDefaultSystemRate] = useState<number>(1.5);
+  // 2. Tasa de interés mensual parametrizable (por defecto toma la tasa oficial de la empresa)
+  const [monthlyRatePercent, setMonthlyRatePercent] = useState<number>(officialRate ?? 0);
+  const defaultSystemRate = officialRate ?? 0;
 
   // 3. Estados de UI
   const [showSchedule, setShowSchedule] = useState<boolean>(false);
@@ -48,13 +77,9 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
 
   // Aplicar tasa y plazo oficiales cuando llegan desde la API
   useEffect(() => {
-    if (settings?.preferentialMonthlyRate) {
-      const r = Number((settings.preferentialMonthlyRate * 100).toFixed(4));
-      setMonthlyRatePercent(r);
-      setDefaultSystemRate(r);
-    }
+    if (officialRate !== null) setMonthlyRatePercent(officialRate);
     if (settings?.defaultTermMonths) setTermMonths(settings.defaultTermMonths);
-  }, [settings?.preferentialMonthlyRate, settings?.defaultTermMonths]);
+  }, [officialRate, settings?.defaultTermMonths]);
 
   // Si cambia el vehículo seleccionado
   useEffect(() => {
@@ -72,7 +97,7 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
   const handlePriceChange = (val: number) => {
     const validPrice = Math.max(0, isNaN(val) ? 0 : val);
     setPrice(validPrice);
-    // Ajustar prima si excede el nuevo precio o mantener el 15% si era proporcional
+    // Si la prima excede el nuevo precio se ajusta a la prima mínima del producto
     if (downPayment > validPrice) {
       setDownPayment(Math.round((validPrice * minDownPercent) / 100));
     }
@@ -98,7 +123,11 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
     const startDate = todayLocalISO();
     const firstDueDate = addMonthsISO(startDate, 1);
 
-    const effectiveTerm = Math.max(1, termMonths || 36);
+    const effectiveTerm = Math.max(1, termMonths || minTerm);
+    if (price <= 0 || principal <= 0 || officialRate === null) {
+      setSimulationData(null);
+      return;
+    }
 
     try {
       const res = await api.simulate({
@@ -155,7 +184,7 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
         schedule: localSchedule,
       });
     }
-  }, [price, downPayment, termMonths, monthlyRatePercent]);
+  }, [price, downPayment, termMonths, monthlyRatePercent, minTerm, officialRate]);
 
   useEffect(() => {
     runSimulation();
@@ -164,17 +193,41 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
   const inputBase =
     'w-full py-1.5 bg-slate-900 border border-slate-600 focus:ring-1 rounded-lg text-right font-mono font-bold text-sm outline-none transition-all';
 
+  // La empresa aún no configuró su producto financiero: no se inventan tasas ni plazos
+  if (!settingsLoading && !settings?.configured) {
+    return (
+      <div className="w-full max-w-5xl mx-auto glass-panel rounded-2xl border border-slate-700/80 bg-[#0F172A]/95 p-8 text-center space-y-2">
+        <Calculator className="w-8 h-8 mx-auto text-brand-accent" />
+        <h3 className="text-sm font-bold text-white">El simulador estará disponible pronto</h3>
+        <p className="text-xs text-slate-400 max-w-md mx-auto">
+          {tenant.name} aún no ha publicado sus condiciones de financiamiento. Mientras tanto puedes solicitar información
+          y un asesor te contactará.
+        </p>
+        {onApplyLead && (
+          <button
+            type="button"
+            onClick={() => onApplyLead({ price, down: downPayment, term: termMonths, installment: 0 })}
+            className="btn-brand mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer"
+          >
+            <span>Solicitar información</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="@container w-full max-w-5xl mx-auto glass-panel rounded-2xl border border-slate-700/80 shadow-2xl bg-[#0F172A]/95 text-slate-100">
       {/* Encabezado compacto */}
       <div className="flex items-center justify-between gap-3 px-4 py-3 @xl:px-5 border-b border-slate-800">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
-            <Calculator className="w-4 h-4 text-slate-300" />
+            <Calculator className="w-4 h-4 text-brand-accent" />
           </div>
           <div className="min-w-0">
             <h3 className="text-sm @xl:text-base font-bold text-white tracking-tight truncate">
-              Simulador de Financiamiento VELTOR
+              Simulador de financiamiento · {tenant.name}
             </h3>
             <p className="text-[11px] text-slate-400 truncate">
               {vehicleName ? `Cotización para ${vehicleName}` : 'Ajusta los valores y mira tu cuota al instante'}
@@ -199,31 +252,23 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
                 Precio del vehículo
               </label>
               <div className="relative flex items-center w-36">
-                <span className="absolute left-2.5 text-slate-400 font-bold text-xs">$</span>
+                <span className="absolute left-2.5 text-slate-400 font-bold text-xs">{symbol}</span>
                 <input
                   id="sim-price-input"
                   type="number"
                   inputMode="numeric"
-                  min={1000}
-                  max={250000}
+                  min={0}
                   step={100}
                   value={price === 0 ? '' : price}
                   onChange={(e) => handlePriceChange(Number(e.target.value))}
-                  placeholder="20000"
+                  placeholder="Precio"
                   className={`${inputBase} pl-6 pr-2.5 text-white focus:border-white focus:ring-white`}
                 />
               </div>
             </div>
-            <input
-              type="range"
-              min={3000}
-              max={80000}
-              step={500}
-              value={Math.min(80000, price)}
-              onChange={(e) => handlePriceChange(Number(e.target.value))}
-              aria-label="Precio del vehículo"
-              className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-slate-200"
-            />
+            {price <= 0 && (
+              <p className="text-[11px] text-slate-400">Ingresa el precio del vehículo para calcular tu cuota.</p>
+            )}
           </div>
 
           {/* 2. Prima inicial ($ y %) */}
@@ -234,7 +279,7 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
               </label>
               <div className="flex items-center gap-1.5">
                 <div className="relative flex items-center w-28">
-                  <span className="absolute left-2.5 text-slate-400 font-bold text-xs">$</span>
+                  <span className="absolute left-2.5 text-slate-400 font-bold text-xs">{symbol}</span>
                   <input
                     id="sim-down-input"
                     type="number"
@@ -251,8 +296,8 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
                   <input
                     type="number"
                     inputMode="decimal"
-                    min={10}
-                    max={80}
+                    min={minDownPercent}
+                    max={100}
                     step={1}
                     value={downPercent}
                     onChange={(e) => handleDownPercentChange(Number(e.target.value))}
@@ -265,10 +310,10 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
             </div>
             <input
               type="range"
-              min={10}
-              max={60}
-              step={5}
-              value={downPercent >= 10 && downPercent <= 60 ? downPercent : 15}
+              min={minDownPercent}
+              max={100}
+              step={1}
+              value={Math.max(minDownPercent, Math.min(100, downPercent))}
               onChange={(e) => handleDownPercentChange(Number(e.target.value))}
               aria-label="Porcentaje de prima"
               className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-400"
@@ -286,29 +331,29 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
                   id="sim-term-input"
                   type="number"
                   inputMode="numeric"
-                  min={1}
-                  max={120}
+                  min={minTerm}
+                  max={maxTerm}
                   step={1}
                   value={termMonths === 0 ? '' : termMonths}
                   onChange={(e) => {
                     const val = parseInt(e.target.value, 10);
-                    setTermMonths(isNaN(val) ? 0 : Math.max(0, Math.min(120, val)));
+                    setTermMonths(isNaN(val) ? 0 : Math.max(0, Math.min(maxTerm, val)));
                   }}
-                  placeholder="36"
+                  placeholder={String(settings?.defaultTermMonths ?? minTerm)}
                   className={`${inputBase} pl-2 pr-12 text-white focus:border-white focus:ring-white`}
                 />
                 <span className="absolute right-2.5 text-slate-400 text-xs font-bold">meses</span>
               </div>
             </div>
-            <div className="grid grid-cols-6 gap-1.5">
-              {[12, 24, 36, 48, 60, 72].map((term) => (
+            <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.max(1, terms.length)}, minmax(0, 1fr))` }}>
+              {terms.map((term) => (
                 <button
                   key={term}
                   type="button"
                   onClick={() => setTermMonths(term)}
                   className={`py-1.5 rounded-lg text-xs font-bold font-mono transition-all border cursor-pointer ${
                     termMonths === term
-                      ? 'bg-slate-100 text-slate-950 border-white'
+                      ? 'bg-brand-accent text-brand-on-accent border-brand-accent'
                       : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:border-slate-500 hover:text-white'
                   }`}
                 >
@@ -330,13 +375,13 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
                   id="sim-rate-input"
                   type="number"
                   inputMode="decimal"
-                  min={0.1}
-                  max={10.0}
+                  min={minRate}
+                  max={maxRate}
                   step={0.05}
                   value={monthlyRatePercent}
                   onChange={(e) => {
                     const val = parseFloat(e.target.value);
-                    setMonthlyRatePercent(isNaN(val) ? 0 : Math.max(0, Math.min(25, val)));
+                    setMonthlyRatePercent(isNaN(val) ? 0 : Math.max(0, Math.min(maxRate || val, val)));
                   }}
                   className={`${inputBase} pl-2 pr-6 text-cyan-300 focus:border-cyan-400 focus:ring-cyan-400`}
                 />
@@ -345,8 +390,8 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
             </div>
             <input
               type="range"
-              min={0.5}
-              max={4.0}
+              min={minRate}
+              max={maxRate}
               step={0.05}
               value={monthlyRatePercent}
               onChange={(e) => setMonthlyRatePercent(parseFloat(e.target.value))}
@@ -380,11 +425,11 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
           <div className="flex items-center justify-between gap-3 @3xl:flex-col @3xl:items-stretch">
             <div className="min-w-0">
               <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block">
-                Cuota mensual · {termMonths || 36} meses
+                Cuota mensual · {termMonths || minTerm} meses
               </span>
               <div className="flex items-baseline gap-1">
                 <span className="text-2xl @3xl:text-3xl font-black text-white tracking-tight font-mono truncate">
-                  {simulationData ? formatUSD(simulationData.installment) : '...'}
+                  {simulationData ? formatMoney(simulationData.installment) : '...'}
                 </span>
                 <span className="text-xs text-slate-400">/mes</span>
               </div>
@@ -402,7 +447,7 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
                   });
                 }
               }}
-              className="shrink-0 py-2.5 @3xl:py-3 px-4 rounded-lg text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-white text-slate-950 transition-all flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer"
+              className="shrink-0 py-2.5 @3xl:py-3 px-4 rounded-lg text-xs font-bold uppercase tracking-wider btn-brand transition-all flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer"
             >
               <span>Solicitar</span>
               <ArrowRight className="w-4 h-4 shrink-0" />
@@ -416,23 +461,23 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
             <div className="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800">
               <dt className="text-[10px] text-slate-400">Capital a financiar</dt>
               <dd className="font-bold text-white font-mono">
-                {simulationData ? formatUSD(simulationData.principal) : '-'}
+                {simulationData ? formatMoney(simulationData.principal) : '-'}
               </dd>
             </div>
             <div className="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800">
               <dt className="text-[10px] text-slate-400">Prima</dt>
-              <dd className="font-bold text-emerald-400 font-mono">{formatUSD(downPayment)}</dd>
+              <dd className="font-bold text-emerald-400 font-mono">{formatMoney(downPayment)}</dd>
             </div>
             <div className="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800">
               <dt className="text-[10px] text-slate-400">Intereses estimados</dt>
               <dd className="font-semibold text-slate-300 font-mono">
-                {simulationData ? formatUSD(simulationData.totalInterest) : '-'}
+                {simulationData ? formatMoney(simulationData.totalInterest) : '-'}
               </dd>
             </div>
             <div className="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800">
               <dt className="text-[10px] text-slate-400">Total a pagar</dt>
               <dd className="font-bold text-white font-mono">
-                {simulationData ? formatUSD(simulationData.totalPayments) : '-'}
+                {simulationData ? formatMoney(simulationData.totalPayments) : '-'}
               </dd>
             </div>
           </dl>
@@ -449,7 +494,7 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
           )}
 
           <p className="text-[10px] text-slate-500 leading-relaxed">
-            * Estimación sujeta a aprobación crediticia conforme a políticas de crédito de VELTOR.
+            * Estimación sujeta a aprobación crediticia conforme a las políticas de crédito de {tenant.name}.
           </p>
         </div>
       </div>
@@ -464,7 +509,7 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-[11px]">
               <Calendar className="w-3.5 h-3.5 text-slate-400" />
               <span className="text-slate-400">Saldo a la fecha:</span>
-              <span className="font-mono font-bold text-emerald-400">{formatUSD(simulationData.principal)}</span>
+              <span className="font-mono font-bold text-emerald-400">{formatMoney(simulationData.principal)}</span>
             </div>
           </div>
 
@@ -485,12 +530,12 @@ export const FinancingSimulator: React.FC<FinancingSimulatorProps> = ({
                 {simulationData.schedule.map((row: any) => (
                   <tr key={row.number} className="hover:bg-slate-800/40 transition-colors">
                     <td className="py-1.5 px-2.5 font-bold text-slate-400">{row.number}</td>
-                    <td className="py-1.5 px-2.5 font-sans text-slate-300">{formatDateSV(row.dueDate)}</td>
-                    <td className="hidden @2xl:table-cell py-1.5 px-2.5 text-right text-slate-400">{formatUSD(row.openingBalance)}</td>
-                    <td className="py-1.5 px-2.5 text-right text-emerald-400">{formatUSD(row.principal)}</td>
-                    <td className="py-1.5 px-2.5 text-right text-slate-400">{formatUSD(row.interest)}</td>
-                    <td className="hidden @xl:table-cell py-1.5 px-2.5 text-right font-bold text-white">{formatUSD(row.payment)}</td>
-                    <td className="py-1.5 px-2.5 text-right font-bold text-slate-200">{formatUSD(row.closingBalance)}</td>
+                    <td className="py-1.5 px-2.5 font-sans text-slate-300">{formatDate(row.dueDate)}</td>
+                    <td className="hidden @2xl:table-cell py-1.5 px-2.5 text-right text-slate-400">{formatMoney(row.openingBalance)}</td>
+                    <td className="py-1.5 px-2.5 text-right text-emerald-400">{formatMoney(row.principal)}</td>
+                    <td className="py-1.5 px-2.5 text-right text-slate-400">{formatMoney(row.interest)}</td>
+                    <td className="hidden @xl:table-cell py-1.5 px-2.5 text-right font-bold text-white">{formatMoney(row.payment)}</td>
+                    <td className="py-1.5 px-2.5 text-right font-bold text-slate-200">{formatMoney(row.closingBalance)}</td>
                   </tr>
                 ))}
               </tbody>

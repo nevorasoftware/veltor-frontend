@@ -9,7 +9,9 @@ import { SimulatorPage } from './pages/SimulatorPage';
 import { LoginPage } from './pages/LoginPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { ClientPortalPage } from './pages/ClientPortalPage';
+import { PlatformPage } from './pages/PlatformPage';
 import { RequireAuth } from './auth/RequireAuth';
+import { TenantProvider } from './tenant/TenantProvider';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,37 +25,47 @@ const queryClient = new QueryClient({
 export const App: React.FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
-      <Router>
-        <div className="min-h-screen flex flex-col bg-[#0B132B] text-slate-100">
-          <Navbar />
-          <main className="flex-1">
-            <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/catalogo" element={<CatalogPage />} />
-              <Route path="/simulador" element={<SimulatorPage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route
-                path="/admin"
-                element={
-                  <RequireAuth audience="staff">
-                    <AdminDashboardPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/portal"
-                element={
-                  <RequireAuth audience="customer">
-                    <ClientPortalPage />
-                  </RequireAuth>
-                }
-              />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </main>
-          <Footer />
-        </div>
-      </Router>
+      <TenantProvider>
+        <Router>
+          <div className="min-h-screen flex flex-col bg-[#0B132B] text-slate-100">
+            <Navbar />
+            <main className="flex-1">
+              <Routes>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/catalogo" element={<CatalogPage />} />
+                <Route path="/simulador" element={<SimulatorPage />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route
+                  path="/admin"
+                  element={
+                    <RequireAuth audience="staff">
+                      <AdminDashboardPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/portal"
+                  element={
+                    <RequireAuth audience="customer">
+                      <ClientPortalPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/plataforma"
+                  element={
+                    <RequireAuth audience="platform">
+                      <PlatformPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </main>
+            <Footer />
+          </div>
+        </Router>
+      </TenantProvider>
     </QueryClientProvider>
   );
 };

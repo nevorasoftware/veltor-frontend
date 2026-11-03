@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Lock, Mail, ArrowRight, UserCheck, AlertCircle, KeyRound } from 'lucide-react';
-import { BRANDING, SECTIONS } from '../config/branding';
+import { Lock, Mail, ArrowRight, AlertCircle, KeyRound } from 'lucide-react';
+import { useTenant } from '../tenant/TenantContext';
 import { api } from '../api/client';
-import { clearSession, getUser, hasValidSession, saveSession, updateUser, type SessionUser } from '../auth/session';
+import { clearSession, getUser, hasValidSession, homePathFor, saveSession, updateUser, type SessionUser } from '../auth/session';
+import { TenantLogo } from '../components/TenantLogo';
 
 const inputClass =
   'w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-slate-400 transition-colors';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const { tenant, sections, logoSrc } = useTenant();
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -27,7 +29,8 @@ export const LoginPage: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  const goHome = (user: SessionUser) => navigate(user.role === 'CUSTOMER' ? '/portal' : '/admin', { replace: true });
+  // Redirección por rol: SUPERADMIN → /plataforma, CUSTOMER → /portal, personal → /admin
+  const goHome = (user: SessionUser) => navigate(homePathFor(user), { replace: true });
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,14 +90,20 @@ export const LoginPage: React.FC = () => {
     <div className="min-h-[80vh] flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md space-y-8 glass-panel rounded-3xl border border-slate-700/80 bg-[#0F172A]/90 p-8 sm:p-10 shadow-2xl">
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-700 to-slate-900 border border-slate-600 flex items-center justify-center mx-auto text-white shadow-lg">
-            {mustChange ? <KeyRound className="w-6 h-6 text-slate-100" /> : <UserCheck className="w-6 h-6 text-slate-100" />}
-          </div>
-          <h2 className="text-2xl font-black text-white tracking-widest uppercase">{BRANDING.name}</h2>
+          {mustChange ? (
+            <div className="w-12 h-12 rounded-2xl bg-brand-accent text-brand-on-accent flex items-center justify-center mx-auto shadow-lg">
+              <KeyRound className="w-6 h-6" />
+            </div>
+          ) : (
+            <div className="flex justify-center">
+              <TenantLogo name={tenant.name} src={logoSrc} className="w-14 h-14" textClassName="text-2xl" />
+            </div>
+          )}
+          <h2 className="text-2xl font-black text-white tracking-widest uppercase">{tenant.name}</h2>
           <p className="text-xs text-slate-400">
             {mustChange
               ? 'Por seguridad debes definir una nueva contraseña antes de continuar.'
-              : `Ingreso centralizado a ${SECTIONS.adminPanel} y ${SECTIONS.clientPortal}`}
+              : `Ingreso centralizado a ${sections.adminPanel} y ${sections.clientPortal}`}
           </p>
         </div>
 
@@ -164,7 +173,7 @@ export const LoginPage: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-white text-slate-900 transition-all shadow-md disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider btn-brand transition-all shadow-md disabled:opacity-50"
             >
               <span>{loading ? 'Guardando...' : 'Guardar y continuar'}</span>
               <ArrowRight className="w-4 h-4 text-slate-900" />
@@ -221,7 +230,7 @@ export const LoginPage: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-white text-slate-900 transition-all shadow-md hover:shadow-lg disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider btn-brand transition-all shadow-md hover:shadow-lg disabled:opacity-50"
             >
               <span>{loading ? 'Verificando...' : 'Iniciar Sesión'}</span>
               <ArrowRight className="w-4 h-4 text-slate-900" />

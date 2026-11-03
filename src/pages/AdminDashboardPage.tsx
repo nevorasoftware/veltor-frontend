@@ -27,15 +27,18 @@ import {
   Mail,
   LayoutDashboard,
   LayoutGrid,
+  Building2,
   HardDrive,
 } from 'lucide-react';
-import { SECTIONS, formatUSD, formatDateSV, todayLocalISO } from '../config/branding';
+import { formatMoney, formatDate, todayLocalISO, currencySymbol, currencyCode } from '../utils/format';
+import { useTenant } from '../tenant/TenantContext';
 import { api } from '../api/client';
 import type { CollectionSettings, LateFeeType } from '../api/client';
 import { CollectionSettingsPanel, LATE_FEE_LABELS } from '../components/admin/CollectionSettingsPanel';
 import { formatDUI, formatNIT, isValidDUI, isValidNIT, compressAndReadFileAsBase64 } from '../utils/formatters';
-import { clearSession, getUser } from '../auth/session';
+import { clearSession, getUser, isSuperAdmin } from '../auth/session';
 import { AdminVehiclesTab } from '../components/admin/AdminVehiclesTab';
+import { MyCompanyTab } from '../components/admin/MyCompanyTab';
 import { usePublicSettings } from '../hooks/usePublicSettings';
 import { suggestedDownPayment } from '../utils/vehicles';
 import { addMonths, firstDueDateForDay } from '../utils/collections';
@@ -51,7 +54,8 @@ interface UploadedDocState {
 
 export const AdminDashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'overview' | 'leads' | 'loans' | 'vehicles' | 'expenses' | 'settings'>('overview');
+  const { sections, isSupport } = useTenant();
+  const [activeTab, setActiveTab] = useState<'overview' | 'leads' | 'loans' | 'vehicles' | 'expenses' | 'settings' | 'company'>('overview');
   const [loadError, setLoadError] = useState<string | null>(null);
   const { data: publicSettings, refetch: refetchSettings } = usePublicSettings();
   const [metrics, setMetrics] = useState<any>(null);
@@ -60,7 +64,7 @@ export const AdminDashboardPage: React.FC = () => {
   const [vehicles, setVehicles] = useState<any[]>([]);
 
   // Configuración de Tasa Preferencial
-  const [adminMonthlyRate, setAdminMonthlyRate] = useState<number>(1.5);
+  const [adminMonthlyRate, setAdminMonthlyRate] = useState<number>(0);
   const [rateUpdating, setRateUpdating] = useState<boolean>(false);
   const [rateFeedback, setRateFeedback] = useState<string | null>(null);
   const [rateError, setRateError] = useState<string | null>(null);
@@ -112,20 +116,20 @@ export const AdminDashboardPage: React.FC = () => {
   const [leadEmail, setLeadEmail] = useState<string>('');
   const [leadStatus, setLeadStatus] = useState<string>('NEW');
   const [leadNotes, setLeadNotes] = useState<string>('');
-  const [leadTermMonths, setLeadTermMonths] = useState<number>(36);
+  const [leadTermMonths, setLeadTermMonths] = useState<number>(0);
   const [leadDownPayment, setLeadDownPayment] = useState<number>(0);
   const [leadVehicleId, setLeadVehicleId] = useState<string>('');
   const [leadSaving, setLeadSaving] = useState<boolean>(false);
   const [leadSaveSuccess, setLeadSaveSuccess] = useState<string | null>(null);
 
   // Tasa de interés parametrizable por cliente al aperturar crédito
-  const [leadMonthlyRate, setLeadMonthlyRate] = useState<number>(1.5);
+  const [leadMonthlyRate, setLeadMonthlyRate] = useState<number>(0);
 
   // Día de pago y mora del crédito (valores sugeridos desde Parámetros y Tasas)
   const [collectionSettings, setCollectionSettings] = useState<CollectionSettings | null>(null);
   const [leadPaymentDay, setLeadPaymentDay] = useState<number | ''>('');
   const [leadLateFeeType, setLeadLateFeeType] = useState<LateFeeType>('PER_DAY');
-  const [leadLateFeeAmount, setLeadLateFeeAmount] = useState<number>(5);
+  const [leadLateFeeAmount, setLeadLateFeeAmount] = useState<number>(0);
 
   // Campos de Formalización a Crédito Activo
   const [leadDui, setLeadDui] = useState<string>('');
@@ -190,7 +194,7 @@ export const AdminDashboardPage: React.FC = () => {
   }, []);
 
   const lateFeeDefaultAmount = (type: LateFeeType, cfg = collectionSettings) =>
-    type === 'PER_DAY' ? cfg?.lateFeePerDayAmount ?? 5 : type === 'PER_INSTALLMENT' ? cfg?.lateFeePerInstallmentAmount ?? 20 : 0;
+    type === 'PER_DAY' ? cfg?.lateFeePerDayAmount ?? 0 : type === 'PER_INSTALLMENT' ? cfg?.lateFeePerInstallmentAmount ?? 0 : 0;
 
   const changeLeadLateFeeType = (type: LateFeeType) => {
     setLeadLateFeeType(type);
@@ -249,7 +253,7 @@ export const AdminDashboardPage: React.FC = () => {
       setSelectedExpense(null);
       setExpConcept('');
       setExpCategoryType('PRODUCT');
-      setExpSubcategory('Repuestos e Insumos');
+      setExpSubcategory('');
       setExpQuantity(1);
       setExpUnitPrice(0);
       setExpExpenseDate(todayLocalISO());
@@ -269,7 +273,7 @@ export const AdminDashboardPage: React.FC = () => {
       return;
     }
     if (expUnitPrice <= 0) {
-      setExpError('El precio unitario debe ser mayor a $0.00.');
+      setExpError(`El precio unitario debe ser mayor a ${formatMoney(0)}.`);
       return;
     }
 
@@ -492,7 +496,7 @@ export const AdminDashboardPage: React.FC = () => {
       setPaymentSuccessMsg(
         res.isDuplicate
           ? 'Este pago ya había sido registrado.'
-          : `Pago ${res.payment?.code} aplicado. Nuevo saldo de capital: ${formatUSD(res.newPrincipalBalance)}`,
+          : `Pago ${res.payment?.code} aplicado. Nuevo saldo de capital: ${formatMoney(res.newPrincipalBalance)}`,
       );
       loadData();
       setTimeout(() => {
@@ -515,7 +519,7 @@ export const AdminDashboardPage: React.FC = () => {
     setLeadEmail(lead.email || '');
     setLeadStatus(lead.status || 'NEW');
     setLeadNotes(lead.internalNotes || lead.message || '');
-    setLeadTermMonths(lead.termMonths || publicSettings?.defaultTermMonths || 36);
+    setLeadTermMonths(lead.termMonths || publicSettings?.defaultTermMonths || publicSettings?.minTermMonths || 0);
     setLeadDownPayment(
       lead.estimatedDown !== undefined && lead.estimatedDown !== null
         ? Number(lead.estimatedDown)
@@ -609,10 +613,23 @@ export const AdminDashboardPage: React.FC = () => {
   };
 
   // Plazos permitidos por el producto financiero (en múltiplos de 12 meses, más el plazo actual)
+  // Límites de tasa del producto financiero de la empresa (en %)
+  const rateBounds = useMemo(() => {
+    const pct = (v: number | null | undefined) => (v != null ? Number((v * 100).toFixed(4)) : null);
+    const min = pct(publicSettings?.minMonthlyRate) ?? 0;
+    const official = pct(publicSettings?.preferentialMonthlyRate) ?? 0;
+    const max = pct(publicSettings?.maxMonthlyRate) ?? Math.max(min, official * 2);
+    return { min, max };
+  }, [publicSettings?.minMonthlyRate, publicSettings?.maxMonthlyRate, publicSettings?.preferentialMonthlyRate]);
+
+  // "Mi empresa": la edita el ADMIN de la empresa o el superadmin en modo soporte
+  const canEditCompany = user?.role === 'ADMIN' || (isSuperAdmin(user) && isSupport);
+
   const termOptions = useMemo(() => {
-    const min = publicSettings?.minTermMonths ?? 12;
-    const max = publicSettings?.maxTermMonths ?? 72;
-    const opts = new Set<number>([min, max, leadTermMonths]);
+    const min = publicSettings?.minTermMonths ?? (leadTermMonths || 1);
+    const max = publicSettings?.maxTermMonths ?? Math.max(min, leadTermMonths);
+    const opts = new Set<number>([min, max]);
+    if (leadTermMonths > 0) opts.add(leadTermMonths);
     for (let t = Math.ceil(min / 12) * 12; t <= max; t += 12) opts.add(t);
     return [...opts].filter((t) => t >= min && t <= max).sort((a, b) => a - b);
   }, [publicSettings?.minTermMonths, publicSettings?.maxTermMonths, leadTermMonths]);
@@ -686,7 +703,7 @@ export const AdminDashboardPage: React.FC = () => {
       });
 
       setConversionSuccessMsg(
-        `${res.message} Cuota nivelada: ${formatUSD(res.levelPayment)} a ${leadTermMonths} meses (${leadMonthlyRate.toFixed(2)}% mensual).`,
+        `${res.message} Cuota nivelada: ${formatMoney(res.levelPayment)} a ${leadTermMonths} meses (${leadMonthlyRate.toFixed(2)}% mensual).`,
       );
       loadData();
     } catch (err: any) {
@@ -701,8 +718,8 @@ export const AdminDashboardPage: React.FC = () => {
       {/* Barra Superior de Administración */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
         <div>
-          <span className="text-xs font-bold uppercase tracking-widest text-slate-400">
-            {SECTIONS.adminPanel}
+          <span className="text-xs font-bold uppercase tracking-widest text-brand-accent">
+            {sections.adminPanel}
           </span>
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
             Panel de Operaciones Financieras
@@ -726,17 +743,18 @@ export const AdminDashboardPage: React.FC = () => {
       {/* Menú de Módulos del Panel */}
       <nav aria-label="Menú de administración" className="rounded-2xl border border-slate-700/60 bg-slate-900/60 p-2 shadow-lg">
         <div className="flex items-center gap-2 px-2 pt-1 pb-2">
-          <LayoutGrid className="w-3.5 h-3.5 text-sky-400" />
+          <LayoutGrid className="w-3.5 h-3.5 text-brand-accent" />
           <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Menú de administración</span>
         </div>
         <div className="flex gap-2 overflow-x-auto whitespace-nowrap">
           {([
             { key: 'overview', label: 'Resumen General', icon: LayoutDashboard },
             { key: 'leads', label: 'Prospectos', icon: Users, count: leads.length },
-            { key: 'loans', label: SECTIONS.loans, icon: CreditCard },
+            { key: 'loans', label: sections.loans, icon: CreditCard },
             { key: 'vehicles', label: 'Vehículos', icon: Car, count: vehicles.length },
             { key: 'expenses', label: 'Control de Gastos', icon: Receipt, count: expenses.length },
             { key: 'settings', label: 'Parámetros y Tasas', icon: Sliders },
+            ...(canEditCompany ? ([{ key: 'company', label: 'Mi empresa', icon: Building2 }] as const) : []),
           ] as const).map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.key;
@@ -747,16 +765,16 @@ export const AdminDashboardPage: React.FC = () => {
                 aria-current={active ? 'page' : undefined}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer border ${
                   active
-                    ? 'bg-sky-500/15 border-sky-400/50 text-white shadow-[0_0_0_1px_rgba(56,189,248,0.15)]'
+                    ? 'bg-brand-accent/15 border-brand-accent/50 text-white shadow-sm'
                     : 'bg-slate-800/40 border-slate-700/50 text-slate-300 hover:bg-slate-800 hover:text-white hover:border-slate-600'
                 }`}
               >
-                <Icon className={`w-4 h-4 ${active ? 'text-sky-400' : 'text-slate-400'}`} />
+                <Icon className={`w-4 h-4 ${active ? 'text-brand-accent' : 'text-slate-400'}`} />
                 <span>{tab.label}</span>
                 {'count' in tab && (
                   <span
                     className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${
-                      active ? 'bg-sky-400/20 text-sky-200' : 'bg-slate-700/70 text-slate-300'
+                      active ? 'bg-brand-accent/20 text-white' : 'bg-slate-700/70 text-slate-300'
                     }`}
                   >
                     {tab.count}
@@ -806,7 +824,7 @@ export const AdminDashboardPage: React.FC = () => {
             <TrendingUp className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-2xl font-black text-white">
-            {metrics ? formatUSD(metrics.financial.activePortfolio) : '-'}
+            {metrics ? formatMoney(metrics.financial.activePortfolio) : '-'}
           </div>
           <p className="text-[11px] text-slate-400">
             Capital activo en {metrics?.financial?.activeLoans || 0} financiamientos
@@ -819,7 +837,7 @@ export const AdminDashboardPage: React.FC = () => {
             <CreditCard className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-2xl font-black text-white">
-            {metrics ? formatUSD(metrics.financial.monthCollections) : '-'}
+            {metrics ? formatMoney(metrics.financial.monthCollections) : '-'}
           </div>
           <p className="text-[11px] text-slate-400">
             Recaudación acumulada del mes en curso
@@ -855,6 +873,8 @@ export const AdminDashboardPage: React.FC = () => {
 
       {/* Contenido según pestaña */}
       {activeTab === 'vehicles' && <AdminVehiclesTab vehicles={vehicles} onChanged={loadData} />}
+
+      {activeTab === 'company' && canEditCompany && <MyCompanyTab />}
 
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -918,7 +938,7 @@ export const AdminDashboardPage: React.FC = () => {
           <div className="lg:col-span-5 glass-panel rounded-2xl border border-slate-700/80 bg-[#0F172A]/90 p-6 space-y-4">
             <div className="flex items-center justify-between pb-4 border-b border-slate-800">
               <h3 className="text-base font-bold text-white">
-                {SECTIONS.loans} Activos
+                {sections.loans} Activos
               </h3>
               <span className="text-xs text-slate-400 font-mono">
                 {loans.length} créditos
@@ -946,7 +966,7 @@ export const AdminDashboardPage: React.FC = () => {
                     <div>
                       <span className="text-[10px] text-slate-400 block">Saldo a la Fecha</span>
                       <span className="font-bold text-white font-mono text-sm">
-                        {formatUSD(ln.currentPrincipalBalance)}
+                        {formatMoney(ln.currentPrincipalBalance)}
                       </span>
                     </div>
                     <div className="text-right">
@@ -960,7 +980,7 @@ export const AdminDashboardPage: React.FC = () => {
                   <button
                     disabled={ln.status !== 'ACTIVE'}
                     onClick={() => openPaymentModal(ln)}
-                    className="w-full py-2 rounded-lg bg-slate-100 hover:bg-white text-slate-900 font-bold text-xs uppercase tracking-wider transition-colors shadow cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="w-full py-2 rounded-lg btn-brand font-bold text-xs uppercase tracking-wider transition-colors shadow cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Registrar Pago o Abono
                   </button>
@@ -1024,7 +1044,7 @@ export const AdminDashboardPage: React.FC = () => {
                       </span>
                     </td>
                     <td className="py-3.5 px-4 text-slate-400 font-mono">
-                      {formatDateSV(l.createdAt)}
+                      {formatDate(l.createdAt)}
                     </td>
                     <td className="py-3.5 px-4 text-center">
                       <div className="flex items-center justify-center gap-2">
@@ -1058,7 +1078,7 @@ export const AdminDashboardPage: React.FC = () => {
         <div className="glass-panel rounded-2xl border border-slate-700/80 bg-[#0F172A]/90 p-6 space-y-6">
           <div className="flex items-center justify-between pb-4 border-b border-slate-800">
             <div>
-              <h3 className="text-lg font-bold text-white">{SECTIONS.loans}</h3>
+              <h3 className="text-lg font-bold text-white">{sections.loans}</h3>
               <p className="text-xs text-slate-400">Control de créditos formalizados, saldos a la fecha y tablas de amortización</p>
             </div>
           </div>
@@ -1114,13 +1134,13 @@ export const AdminDashboardPage: React.FC = () => {
                   <div>
                     <span className="text-slate-400 block font-semibold">Monto Original</span>
                     <span className="font-mono font-bold text-white text-sm">
-                      {formatUSD(ln.originalPrincipal)}
+                      {formatMoney(ln.originalPrincipal)}
                     </span>
                   </div>
                   <div>
                     <span className="text-slate-400 block font-semibold">Saldo a la Fecha</span>
                     <span className="font-mono font-bold text-emerald-400 text-sm">
-                      {formatUSD(ln.currentPrincipalBalance)}
+                      {formatMoney(ln.currentPrincipalBalance)}
                     </span>
                   </div>
                   <div>
@@ -1136,9 +1156,9 @@ export const AdminDashboardPage: React.FC = () => {
                     </span>
                     <span className="block text-[10px] text-slate-400">
                       {ln.lateFeeType === 'PER_DAY'
-                        ? `${formatUSD(ln.lateFeeAmount)} por día`
+                        ? `${formatMoney(ln.lateFeeAmount)} por día`
                         : ln.lateFeeType === 'PER_INSTALLMENT'
-                        ? `${formatUSD(ln.lateFeeAmount)} por cuota`
+                        ? `${formatMoney(ln.lateFeeAmount)} por cuota`
                         : ln.lateRateMonthly
                         ? `${(Number(ln.lateRateMonthly) * 100).toFixed(2)}% mensual`
                         : 'Sin mora'}
@@ -1193,7 +1213,7 @@ export const AdminDashboardPage: React.FC = () => {
                   <button
                     disabled={ln.status !== 'ACTIVE'}
                     onClick={() => openPaymentModal(ln)}
-                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-white text-slate-900 font-bold text-xs uppercase tracking-wider transition-colors shadow flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl btn-brand font-bold text-xs uppercase tracking-wider transition-colors shadow flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Registrar Pago / Abono
                   </button>
@@ -1242,11 +1262,11 @@ export const AdminDashboardPage: React.FC = () => {
                 <div className="relative flex items-center w-36">
                   <input
                     type="number"
-                    min={0.1}
-                    max={5.0}
+                    min={rateBounds.min}
+                    max={rateBounds.max}
                     step={0.05}
                     value={adminMonthlyRate}
-                    onChange={(e) => setAdminMonthlyRate(Math.max(0.1, Number(e.target.value)))}
+                    onChange={(e) => setAdminMonthlyRate(Math.max(0, Number(e.target.value)))}
                     className="w-full pl-3 pr-8 py-2 bg-slate-900 border border-slate-600 focus:border-white focus:ring-1 focus:ring-white rounded-xl text-right font-mono font-bold text-base text-white outline-none"
                   />
                   <span className="absolute right-3 text-slate-400 font-bold text-sm">%</span>
@@ -1255,8 +1275,8 @@ export const AdminDashboardPage: React.FC = () => {
 
               <input
                 type="range"
-                min={0.5}
-                max={3.0}
+                min={rateBounds.min}
+                max={rateBounds.max}
                 step={0.05}
                 value={adminMonthlyRate}
                 onChange={(e) => setAdminMonthlyRate(Number(e.target.value))}
@@ -1264,29 +1284,9 @@ export const AdminDashboardPage: React.FC = () => {
               />
 
               <div className="flex justify-between text-[11px] text-slate-400">
-                <span>0.50% (Mínima)</span>
-                <span>1.50% (Estándar de mercado)</span>
-                <span>3.00%</span>
+                <span>{rateBounds.min.toFixed(2)}% (mínima del producto)</span>
+                <span>{rateBounds.max.toFixed(2)}% (máxima del producto)</span>
               </div>
-            </div>
-
-            {/* Presets rápidos */}
-            <div className="flex items-center gap-2 pt-2 border-t border-slate-700/60 text-xs text-slate-400">
-              <span className="font-semibold text-slate-300">Tasas rápidas:</span>
-              {[1.20, 1.35, 1.50, 1.75, 2.00].map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => setAdminMonthlyRate(r)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer ${
-                    adminMonthlyRate === r
-                      ? 'bg-slate-100 text-slate-950 font-bold'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
-                  }`}
-                >
-                  {r.toFixed(2)}%
-                </button>
-              ))}
             </div>
 
             {/* Equivalencias Anuales */}
@@ -1310,7 +1310,7 @@ export const AdminDashboardPage: React.FC = () => {
                 type="button"
                 onClick={handleSaveRate}
                 disabled={rateUpdating}
-                className="w-full py-3.5 px-6 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-white text-slate-950 transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                className="w-full py-3.5 px-6 rounded-xl text-xs font-bold uppercase tracking-wider btn-brand transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <span>{rateUpdating ? 'Guardando en Base de Datos...' : 'Guardar Nueva Tasa en Producción'}</span>
                 <CheckCircle2 className="w-4 h-4" />
@@ -1355,7 +1355,7 @@ export const AdminDashboardPage: React.FC = () => {
               type="button"
               onClick={handleSaveStaffEmails}
               disabled={staffEmailsSaving}
-              className="w-full py-3 px-6 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-white text-slate-950 transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              className="w-full py-3 px-6 rounded-xl text-xs font-bold uppercase tracking-wider btn-brand transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <span>{staffEmailsSaving ? 'Guardando...' : 'Guardar Correos de Notificación'}</span>
               <CheckCircle2 className="w-4 h-4" />
@@ -1404,7 +1404,7 @@ export const AdminDashboardPage: React.FC = () => {
                 <DollarSign className="w-4 h-4 text-emerald-400" />
               </div>
               <div className="text-2xl font-black text-white font-mono">
-                {formatUSD(expensesSummary?.totalAmount || '0.00')}
+                {formatMoney(expensesSummary?.totalAmount || '0.00')}
               </div>
               <p className="text-[11px] text-slate-400">
                 {expensesSummary?.totalCount || expenses.length} registros contables
@@ -1423,10 +1423,10 @@ export const AdminDashboardPage: React.FC = () => {
                 </span>
               </div>
               <div className="text-2xl font-black text-emerald-300 font-mono">
-                {formatUSD(expensesSummary?.productsTotal || '0.00')}
+                {formatMoney(expensesSummary?.productsTotal || '0.00')}
               </div>
               <p className="text-[11px] text-emerald-400/80">
-                Repuestos, llantas y suministros
+                Compras de productos e insumos
               </p>
             </div>
 
@@ -1442,10 +1442,10 @@ export const AdminDashboardPage: React.FC = () => {
                 </span>
               </div>
               <div className="text-2xl font-black text-sky-300 font-mono">
-                {formatUSD(expensesSummary?.servicesTotal || '0.00')}
+                {formatMoney(expensesSummary?.servicesTotal || '0.00')}
               </div>
               <p className="text-[11px] text-sky-400/80">
-                Mantenimientos, avalúos y pólizas
+                Contratación de servicios
               </p>
             </div>
 
@@ -1458,7 +1458,7 @@ export const AdminDashboardPage: React.FC = () => {
                 </span>
               </div>
               <div className="text-2xl font-black text-white font-mono">
-                {formatUSD(expensesSummary?.currentMonthTotal || '0.00')}
+                {formatMoney(expensesSummary?.currentMonthTotal || '0.00')}
               </div>
               <p className="text-[11px] text-slate-400">
                 Egresos operativos del mes
@@ -1474,7 +1474,7 @@ export const AdminDashboardPage: React.FC = () => {
                 </span>
               </div>
               <div className="text-2xl font-black text-amber-300 font-mono">
-                {formatUSD(expensesSummary?.pendingTotal || '0.00')}
+                {formatMoney(expensesSummary?.pendingTotal || '0.00')}
               </div>
               <p className="text-[11px] text-amber-400/80">
                 Cuentas por liquidar
@@ -1624,7 +1624,7 @@ export const AdminDashboardPage: React.FC = () => {
                             {exp.code}
                           </span>
                           <span className="text-[11px] text-slate-400">
-                            {exp.expenseDate ? formatDateSV(exp.expenseDate) : 'Fecha N/D'}
+                            {exp.expenseDate ? formatDate(exp.expenseDate) : 'Fecha N/D'}
                           </span>
                         </td>
 
@@ -1674,12 +1674,12 @@ export const AdminDashboardPage: React.FC = () => {
 
                         {/* Cantidad x Precio Unitario */}
                         <td className="py-4 px-4 text-center font-mono text-slate-300">
-                          <span>{exp.quantity || 1} × {formatUSD(exp.unitPrice || 0)}</span>
+                          <span>{exp.quantity || 1} × {formatMoney(exp.unitPrice || 0)}</span>
                         </td>
 
                         {/* Monto Total */}
                         <td className="py-4 px-4 text-right font-mono font-black text-white text-sm">
-                          {formatUSD(exp.amount || 0)}
+                          {formatMoney(exp.amount || 0)}
                         </td>
 
                         {/* Estado */}
@@ -1893,7 +1893,7 @@ export const AdminDashboardPage: React.FC = () => {
                         .filter((v) => v.status === 'AVAILABLE' || v.status === 'RESERVED' || v.id === leadVehicleId)
                         .map((v) => (
                           <option key={v.id} value={v.id}>
-                            {v.code} · {v.brand} {v.model} ({v.year}) - {formatUSD(v.salePrice)}
+                            {v.code} · {v.brand} {v.model} ({v.year}) - {formatMoney(v.salePrice)}
                           </option>
                         ))}
                     </select>
@@ -1913,9 +1913,9 @@ export const AdminDashboardPage: React.FC = () => {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-slate-300 font-semibold mb-1">Prima Acordada ($)</label>
+                    <label className="block text-slate-300 font-semibold mb-1">Prima Acordada ({currencySymbol()})</label>
                     <div className="relative flex items-center">
-                      <span className="absolute left-3 text-slate-400 font-bold text-xs">$</span>
+                      <span className="absolute left-3 text-slate-400 font-bold text-xs">{currencySymbol()}</span>
                       <input
                         type="number"
                         min={0}
@@ -2041,30 +2041,13 @@ export const AdminDashboardPage: React.FC = () => {
                           </div>
                           <input
                             type="range"
-                            min="0.5"
-                            max="3.5"
+                            min={rateBounds.min}
+                            max={rateBounds.max}
                             step="0.05"
                             value={leadMonthlyRate}
                             onChange={(e) => setLeadMonthlyRate(Number(e.target.value))}
                             className="w-full accent-emerald-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
                           />
-                          {/* Chips de tasa rápida */}
-                          <div className="flex flex-wrap gap-1.5 pt-1">
-                            {[0.99, 1.25, 1.5, 1.75, 2.0].map((rateVal) => (
-                              <button
-                                key={rateVal}
-                                type="button"
-                                onClick={() => setLeadMonthlyRate(rateVal)}
-                                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-all cursor-pointer ${
-                                  Math.abs(leadMonthlyRate - rateVal) < 0.01
-                                    ? 'bg-emerald-500 text-slate-950 font-black'
-                                    : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'
-                                }`}
-                              >
-                                {rateVal.toFixed(2)}%
-                              </button>
-                            ))}
-                          </div>
                           <div className="flex justify-between text-[10px] text-slate-500 font-mono pt-1">
                             <span>Nominal Anual: {(leadMonthlyRate * 12).toFixed(1)}%</span>
                             <span>TEA: {((Math.pow(1 + leadMonthlyRate / 100, 12) - 1) * 100).toFixed(1)}%</span>
@@ -2086,7 +2069,7 @@ export const AdminDashboardPage: React.FC = () => {
                             ))}
                           </select>
                           <div className="flex gap-1.5 pt-1">
-                            {[24, 36, 48, 60].map((t) => (
+                            {termOptions.filter((t) => t % 12 === 0).slice(0, 6).map((t) => (
                               <button
                                 key={t}
                                 type="button"
@@ -2109,9 +2092,9 @@ export const AdminDashboardPage: React.FC = () => {
                         {/* Prima Acordada */}
                         <div className="space-y-2 p-3.5 rounded-xl bg-slate-950/60 border border-slate-800">
                           <div className="flex items-center justify-between">
-                            <label className="text-slate-300 font-semibold">Prima / Enganche ($) *</label>
+                            <label className="text-slate-300 font-semibold">Prima / Enganche ({currencySymbol()}) *</label>
                             <span className="text-[10px] text-slate-400 font-mono">
-                              Min: 15%
+                              {publicSettings?.minDownPercent != null ? `Mín.: ${publicSettings.minDownPercent}%` : ''}
                             </span>
                           </div>
                           <input
@@ -2123,7 +2106,7 @@ export const AdminDashboardPage: React.FC = () => {
                             className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono text-xs outline-none focus:border-white"
                           />
                           <p className="text-[10px] text-slate-500">
-                            Precio unidad: {formatUSD(selectedLead.vehicle?.salePrice || 20000)}
+                            Precio unidad: {selectedLead.vehicle ? formatMoney(selectedLead.vehicle.salePrice) : 'sin vehículo asignado'}
                           </p>
                         </div>
                       </div>
@@ -2145,7 +2128,7 @@ export const AdminDashboardPage: React.FC = () => {
                           />
                           <p className="text-[10px] text-slate-500">
                             Primera cuota:{' '}
-                            {formatDateSV(
+                            {formatDate(
                               leadPaymentDay === ''
                                 ? addMonths(todayLocalISO(), 1)
                                 : firstDueDateForDay(todayLocalISO(), leadPaymentDay),
@@ -2168,13 +2151,13 @@ export const AdminDashboardPage: React.FC = () => {
                             ))}
                           </select>
                           <p className="text-[10px] text-slate-500">
-                            Se cobra después de {collectionSettings?.graceDays ?? 5} día(s) de gracia.
+                            {collectionSettings ? `Se cobra después de ${collectionSettings.graceDays} día(s) de gracia.` : ''}
                           </p>
                         </div>
 
                         <div className="space-y-2 p-3.5 rounded-xl bg-slate-950/60 border border-slate-800">
                           <label className="block text-slate-300 font-semibold">
-                            {leadLateFeeType === 'PER_DAY' ? 'Mora por Día ($)' : 'Cuota de Mora ($)'}
+                            {leadLateFeeType === 'PER_DAY' ? 'Mora por Día' : 'Cuota de Mora'} ({currencySymbol()})
                           </label>
                           <input
                             type="number"
@@ -2197,10 +2180,10 @@ export const AdminDashboardPage: React.FC = () => {
 
                       {/* Proyección y Resumen Financiero en Vivo */}
                       {(() => {
-                        const vehiclePrice = Number(selectedLead.vehicle?.salePrice || 20000);
-                        const principal = Math.max(100, vehiclePrice - leadDownPayment);
+                        const vehiclePrice = Number(selectedLead.vehicle?.salePrice || 0);
+                        const principal = Math.max(0, vehiclePrice - leadDownPayment);
                         const i = leadMonthlyRate / 100;
-                        const n = leadTermMonths || 36;
+                        const n = leadTermMonths || 1;
                         const cuota = i === 0 ? principal / n : (principal * i) / (1 - Math.pow(1 + i, -n));
                         const totalFinanciamiento = cuota * n;
                         const totalIntereses = totalFinanciamiento - principal;
@@ -2209,19 +2192,19 @@ export const AdminDashboardPage: React.FC = () => {
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/20 font-mono text-xs">
                             <div>
                               <span className="text-[10px] uppercase text-slate-400 font-sans block">Capital a Financiar</span>
-                              <span className="text-sm font-bold text-white">{formatUSD(principal)}</span>
+                              <span className="text-sm font-bold text-white">{formatMoney(principal)}</span>
                             </div>
                             <div>
                               <span className="text-[10px] uppercase text-emerald-400 font-sans block font-bold">Cuota Mensual Nivelada</span>
-                              <span className="text-base font-black text-emerald-400">{formatUSD(cuota)}</span>
+                              <span className="text-base font-black text-emerald-400">{formatMoney(cuota)}</span>
                             </div>
                             <div>
                               <span className="text-[10px] uppercase text-slate-400 font-sans block">Intereses Proyectados</span>
-                              <span className="text-sm font-bold text-slate-300">{formatUSD(totalIntereses)}</span>
+                              <span className="text-sm font-bold text-slate-300">{formatMoney(totalIntereses)}</span>
                             </div>
                             <div>
                               <span className="text-[10px] uppercase text-slate-400 font-sans block">Total a Pagar ({n} meses)</span>
-                              <span className="text-sm font-bold text-white">{formatUSD(totalFinanciamiento)}</span>
+                              <span className="text-sm font-bold text-white">{formatMoney(totalFinanciamiento)}</span>
                             </div>
                           </div>
                         );
@@ -2279,7 +2262,7 @@ export const AdminDashboardPage: React.FC = () => {
                         <p className="text-[10px] text-slate-400 mt-1">Homologado (9 dígitos) o tradicional (14 dígitos)</p>
                       </div>
                       <div>
-                        <label className="block text-slate-300 font-semibold mb-1">Ingresos Mensuales Declarados ($) *</label>
+                        <label className="block text-slate-300 font-semibold mb-1">Ingresos Mensuales Declarados ({currencySymbol()}) *</label>
                         <input
                           type="number"
                           required
@@ -2295,7 +2278,7 @@ export const AdminDashboardPage: React.FC = () => {
                           type="text"
                           value={leadEconomicActivity}
                           onChange={(e) => setLeadEconomicActivity(e.target.value)}
-                          placeholder="Ingeniero / Comerciante"
+                          placeholder="Profesión u oficio"
                           className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white outline-none focus:border-white"
                         />
                       </div>
@@ -2770,7 +2753,7 @@ export const AdminDashboardPage: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Monto Recibido en USD *
+                    Monto Recibido en {currencyCode()} *
                   </label>
                   <input
                     type="number"
@@ -2823,24 +2806,24 @@ export const AdminDashboardPage: React.FC = () => {
                 <div className="p-3 bg-slate-800/40 rounded-xl text-xs text-slate-400 space-y-1">
                   <div className="flex justify-between">
                     <span>Saldo actual de capital:</span>
-                    <span className="font-mono text-white">{formatUSD(selectedLoan.currentPrincipalBalance)}</span>
+                    <span className="font-mono text-white">{formatMoney(selectedLoan.currentPrincipalBalance)}</span>
                   </div>
                   {nextInstallmentInfo && (
                     <div className="flex justify-between">
-                      <span>Próxima cuota (#{nextInstallmentInfo.number} · {formatDateSV(nextInstallmentInfo.dueDate)}):</span>
-                      <span className="font-mono text-white">{formatUSD(nextInstallmentInfo.payment)}</span>
+                      <span>Próxima cuota (#{nextInstallmentInfo.number} · {formatDate(nextInstallmentInfo.dueDate)}):</span>
+                      <span className="font-mono text-white">{formatMoney(nextInstallmentInfo.payment)}</span>
                     </div>
                   )}
                   {nextInstallmentInfo && nextInstallmentInfo.daysOverdue > 0 && (
                     <div className="flex justify-between text-rose-300">
                       <span>Vencida hace {nextInstallmentInfo.daysOverdue} día(s) · mora incluida:</span>
-                      <span className="font-mono">{formatUSD(nextInstallmentInfo.lateFee)}</span>
+                      <span className="font-mono">{formatMoney(nextInstallmentInfo.lateFee)}</span>
                     </div>
                   )}
                   {payoffTotal && (
                     <div className="flex justify-between">
                       <span>Cancelación total hoy:</span>
-                      <span className="font-mono text-white">{formatUSD(payoffTotal)}</span>
+                      <span className="font-mono text-white">{formatMoney(payoffTotal)}</span>
                     </div>
                   )}
                   <div className="flex justify-between">
@@ -2852,7 +2835,7 @@ export const AdminDashboardPage: React.FC = () => {
                 <button
                   type="submit"
                   disabled={paymentSubmitting}
-                  className="w-full py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-white text-slate-900 transition-all shadow-md cursor-pointer disabled:opacity-50"
+                  className="w-full py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider btn-brand transition-all shadow-md cursor-pointer disabled:opacity-50"
                 >
                   {paymentSubmitting ? 'Aplicando...' : 'Confirmar y Aplicar al Crédito'}
                 </button>
@@ -2912,9 +2895,6 @@ export const AdminDashboardPage: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setExpCategoryType('PRODUCT');
-                      if (!expSubcategory || expSubcategory === 'Mantenimiento y Reparación') {
-                        setExpSubcategory('Repuestos e Insumos');
-                      }
                     }}
                     className={`p-3.5 rounded-2xl border flex items-center gap-3 transition-all cursor-pointer ${
                       expCategoryType === 'PRODUCT'
@@ -2927,7 +2907,7 @@ export const AdminDashboardPage: React.FC = () => {
                     </div>
                     <div className="text-left">
                       <span className="font-black text-sm block">Producto</span>
-                      <span className="text-[10px] opacity-80">Bienes físicos, repuestos, llantas e insumos</span>
+                      <span className="text-[10px] opacity-80">Bienes físicos e insumos</span>
                     </div>
                   </button>
 
@@ -2935,9 +2915,6 @@ export const AdminDashboardPage: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setExpCategoryType('SERVICE');
-                      if (!expSubcategory || expSubcategory === 'Repuestos e Insumos') {
-                        setExpSubcategory('Mantenimiento y Reparación');
-                      }
                     }}
                     className={`p-3.5 rounded-2xl border flex items-center gap-3 transition-all cursor-pointer ${
                       expCategoryType === 'SERVICE'
@@ -2950,7 +2927,7 @@ export const AdminDashboardPage: React.FC = () => {
                     </div>
                     <div className="text-left">
                       <span className="font-black text-sm block">Servicio</span>
-                      <span className="text-[10px] opacity-80">Talleres, peritajes, pólizas y honorarios</span>
+                      <span className="text-[10px] opacity-80">Servicios contratados y honorarios</span>
                     </div>
                   </button>
                 </div>
@@ -2967,7 +2944,7 @@ export const AdminDashboardPage: React.FC = () => {
                     required
                     value={expConcept}
                     onChange={(e) => setExpConcept(e.target.value)}
-                    placeholder="Ej. Kit de pastillas de freno cerámicas, Mantenimiento preventivo 40,000 km..."
+                    placeholder="Descripción del producto o servicio"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white outline-none focus:border-amber-400 transition-colors"
                   />
                 </div>
@@ -2980,15 +2957,20 @@ export const AdminDashboardPage: React.FC = () => {
                     type="text"
                     value={expSubcategory}
                     onChange={(e) => setExpSubcategory(e.target.value)}
-                    placeholder="Ej. Repuestos, Mantenimiento, Seguros, Peritajes..."
+                    placeholder="Subcategoría (opcional)"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white outline-none focus:border-amber-400 transition-colors"
                   />
-                  {/* Chips rápidos para subcategorías */}
+                  {/* Chips rápidos: subcategorías ya usadas por la empresa en este tipo de gasto */}
                   <div className="flex flex-wrap gap-1 mt-1.5">
-                    {(expCategoryType === 'PRODUCT'
-                      ? ['Repuestos', 'Llantas', 'Baterías', 'Accesorios', 'Insumos']
-                      : ['Mantenimiento', 'Peritaje', 'Seguro', 'Legal', 'Lavado']
-                    ).map((sub) => (
+                    {[
+                      ...new Set(
+                        expenses
+                          .filter((x) => x.categoryType === expCategoryType && x.subcategory)
+                          .map((x) => String(x.subcategory)),
+                      ),
+                    ]
+                      .slice(0, 8)
+                      .map((sub) => (
                       <button
                         key={sub}
                         type="button"
@@ -3034,7 +3016,7 @@ export const AdminDashboardPage: React.FC = () => {
 
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1">
-                    Precio Unitario ($) *
+                    Precio Unitario ({currencySymbol()}) *
                   </label>
                   <input
                     type="number"
@@ -3050,10 +3032,10 @@ export const AdminDashboardPage: React.FC = () => {
                 <div className="flex flex-col justify-center items-center sm:items-end">
                   <span className="text-[10px] uppercase font-bold text-slate-400">Total a Contabilizar</span>
                   <span className="text-xl font-black text-amber-400 font-mono mt-0.5">
-                    {formatUSD(Number(expQuantity || 1) * Number(expUnitPrice || 0))}
+                    {formatMoney(Number(expQuantity || 1) * Number(expUnitPrice || 0))}
                   </span>
                   <span className="text-[10px] text-slate-500 font-mono">
-                    ({expQuantity} × {formatUSD(expUnitPrice)})
+                    ({expQuantity} × {formatMoney(expUnitPrice)})
                   </span>
                 </div>
               </div>
@@ -3068,7 +3050,7 @@ export const AdminDashboardPage: React.FC = () => {
                     type="text"
                     value={expProvider}
                     onChange={(e) => setExpProvider(e.target.value)}
-                    placeholder="Ej. Distribuidora Automotriz S.A."
+                    placeholder="Nombre del proveedor"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white outline-none focus:border-amber-400"
                   />
                 </div>
@@ -3081,7 +3063,7 @@ export const AdminDashboardPage: React.FC = () => {
                     type="text"
                     value={expInvoiceNumber}
                     onChange={(e) => setExpInvoiceNumber(e.target.value)}
-                    placeholder="Ej. FAC-00984 o CCF-1249"
+                    placeholder="Número de factura o comprobante"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono outline-none focus:border-amber-400"
                   />
                 </div>

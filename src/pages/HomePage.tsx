@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Shield, Award, Clock, ChevronRight, Sparkles } from 'lucide-react';
 import { FinancingSimulator } from '../components/FinancingSimulator';
 import { LeadModal } from '../components/LeadModal';
-import { BRANDING, SECTIONS, formatUSD } from '../config/branding';
+import { formatMoney, formatNumber, countryName } from '../utils/format';
+import { useTenant } from '../tenant/TenantContext';
 import { api } from '../api/client';
 import { usePublicSettings } from '../hooks/usePublicSettings';
 import { VehicleImage } from '../components/VehicleImage';
@@ -17,6 +18,8 @@ export const HomePage: React.FC = () => {
   const [simulationSummary, setSimulationSummary] = useState<any>(null);
   const [loadError, setLoadError] = useState(false);
   const { data: settings } = usePublicSettings();
+  const { tenant, sections } = useTenant();
+  const country = countryName();
 
   // Vehículos destacados: los 3 más recientes publicados
   useEffect(() => {
@@ -40,12 +43,12 @@ export const HomePage: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="text-center max-w-3xl mx-auto space-y-6">
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-800/80 border border-slate-700 text-xs font-semibold text-slate-300">
-              <Sparkles className="w-3.5 h-3.5 text-slate-200" />
-              <span>Plataforma Oficial VELTOR · El Salvador</span>
+              <Sparkles className="w-3.5 h-3.5 text-brand-accent" />
+              <span>{[tenant.name, country].filter(Boolean).join(' · ')}</span>
             </div>
 
             <h1 className="text-4xl sm:text-6xl font-black text-white tracking-tight leading-tight">
-              {BRANDING.tagline}
+              {tenant.tagline || tenant.name}
             </h1>
 
             <p className="text-base sm:text-lg text-slate-300 leading-relaxed font-normal">
@@ -55,7 +58,7 @@ export const HomePage: React.FC = () => {
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
               <Link
                 to="/catalogo"
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl font-bold uppercase tracking-wider text-xs bg-slate-100 hover:bg-white text-slate-900 transition-all shadow-lg hover:shadow-xl"
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl font-bold uppercase tracking-wider text-xs btn-brand transition-all shadow-lg hover:shadow-xl"
               >
                 <span>Explorar Vehículos</span>
                 <ArrowRight className="w-4 h-4 text-slate-900" />
@@ -64,7 +67,7 @@ export const HomePage: React.FC = () => {
                 to="/simulador"
                 className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl font-bold uppercase tracking-wider text-xs text-slate-200 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 transition-all"
               >
-                <span>{SECTIONS.simulator}</span>
+                <span>{sections.simulator}</span>
               </Link>
             </div>
           </div>
@@ -81,11 +84,11 @@ export const HomePage: React.FC = () => {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         <div className="flex flex-col sm:flex-row items-baseline justify-between gap-4">
           <div>
-            <span className="text-xs font-bold uppercase tracking-widest text-slate-400">
+            <span className="text-xs font-bold uppercase tracking-widest text-brand-accent">
               Inventario Seleccionado
             </span>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-              {SECTIONS.catalog}
+              {sections.catalog}
             </h2>
           </div>
           <Link
@@ -120,7 +123,7 @@ export const HomePage: React.FC = () => {
                         {v.brand} {v.model}
                       </h3>
                       <p className="text-xs text-slate-400">
-                        {Number(v.mileageKm || 0).toLocaleString('es-SV')} km · {TRANSMISSION_LABELS[v.transmission] || v.transmission}
+                        {formatNumber(v.mileageKm)} km · {TRANSMISSION_LABELS[v.transmission] || v.transmission}
                       </p>
                     </div>
 
@@ -130,7 +133,7 @@ export const HomePage: React.FC = () => {
                           Precio de Venta
                         </span>
                         <span className="text-xl font-extrabold text-white">
-                          {formatUSD(v.salePrice)}
+                          {formatMoney(v.salePrice)}
                         </span>
                       </div>
                       {cuotaEstimada !== null && (
@@ -139,7 +142,7 @@ export const HomePage: React.FC = () => {
                             Cuota Estimada
                           </span>
                           <span className="text-sm font-bold text-emerald-400">
-                            {formatUSD(cuotaEstimada)}/mes
+                            {formatMoney(cuotaEstimada)}/mes
                           </span>
                         </div>
                       )}
@@ -176,11 +179,11 @@ export const HomePage: React.FC = () => {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="glass-panel rounded-3xl p-8 sm:p-12 border border-slate-800 bg-[#070D1E]/70">
           <div className="text-center max-w-2xl mx-auto mb-10 space-y-2">
-            <span className="text-xs font-bold uppercase tracking-widest text-slate-400">
+            <span className="text-xs font-bold uppercase tracking-widest text-brand-accent">
               Transparencia y Precisión
             </span>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-              ¿Por qué financiar con VELTOR?
+              ¿Por qué financiar con {tenant.name}?
             </h2>
           </div>
 
@@ -211,7 +214,7 @@ export const HomePage: React.FC = () => {
               </div>
               <h3 className="text-base font-bold text-white">Portal Privado 24/7</h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Accede a {SECTIONS.clientPortal} para consultar saldos en tiempo real, descargar recibos, verificar proyecciones y consultar tu historial.
+                Accede a {sections.clientPortal} para consultar saldos en tiempo real, descargar recibos, verificar proyecciones y consultar tu historial.
               </p>
             </div>
           </div>

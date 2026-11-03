@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Car, Plus, Edit3, Trash2, ImagePlus, X, Eye, EyeOff } from 'lucide-react';
 import { api } from '../../api/client';
-import { formatUSD } from '../../config/branding';
+import { currencyCode, formatMoney, formatNumber } from '../../utils/format';
 import { compressAndReadFileAsBase64 } from '../../utils/formatters';
 import { VehicleImage } from '../VehicleImage';
 import { FUEL_LABELS, TRANSMISSION_LABELS, VEHICLE_STATUS_LABELS } from '../../utils/vehicles';
@@ -225,7 +225,7 @@ export const AdminVehiclesTab: React.FC<AdminVehiclesTabProps> = ({ vehicles, on
           </select>
           <button
             onClick={() => openModal()}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-100 hover:bg-white text-slate-900 font-bold text-xs uppercase tracking-wider shadow cursor-pointer"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl btn-brand font-bold text-xs uppercase tracking-wider shadow cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Nuevo Vehículo</span>
@@ -261,15 +261,15 @@ export const AdminVehiclesTab: React.FC<AdminVehiclesTabProps> = ({ vehicles, on
                 </h4>
                 <p className="text-[11px] text-slate-400">
                   {v.type} · {TRANSMISSION_LABELS[v.transmission] || v.transmission} · {FUEL_LABELS[v.fuel] || v.fuel} ·{' '}
-                  {Number(v.mileageKm || 0).toLocaleString('es-SV')} km
+                  {formatNumber(v.mileageKm)} km
                 </p>
                 <div className="flex justify-between text-xs pt-1">
                   <span className="text-slate-400">Precio</span>
-                  <span className="font-mono font-bold text-white">{formatUSD(v.salePrice)}</span>
+                  <span className="font-mono font-bold text-white">{formatMoney(v.salePrice)}</span>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-400">Prima mínima</span>
-                  <span className="font-mono text-slate-300">{formatUSD(v.minDownPayment)}</span>
+                  <span className="font-mono text-slate-300">{formatMoney(v.minDownPayment)}</span>
                 </div>
               </div>
               <div className="p-4 pt-0 flex gap-2">
@@ -377,13 +377,13 @@ export const AdminVehiclesTab: React.FC<AdminVehiclesTabProps> = ({ vehicles, on
                   ))}
                 </select>
               </Field>
-              <Field label="Precio de venta (USD) *">
+              <Field label={`Precio de venta (${currencyCode()}) *`}>
                 <input required type="number" min={1} step="0.01" className={inputClass} value={form.salePrice} onChange={(e) => set('salePrice', e.target.value)} />
               </Field>
-              <Field label="Prima mínima (USD)">
+              <Field label={`Prima mínima (${currencyCode()})`}>
                 <input type="number" min={0} step="0.01" className={inputClass} value={form.minDownPayment} onChange={(e) => set('minDownPayment', e.target.value)} />
               </Field>
-              <Field label="Costo interno (USD)">
+              <Field label={`Costo interno (${currencyCode()})`}>
                 <input type="number" min={0} step="0.01" className={inputClass} value={form.costPrice} onChange={(e) => set('costPrice', e.target.value)} />
               </Field>
               <label className="flex items-center gap-2 text-slate-300 font-semibold self-end pb-2">
@@ -463,7 +463,7 @@ export const AdminVehiclesTab: React.FC<AdminVehiclesTabProps> = ({ vehicles, on
               <button
                 type="submit"
                 disabled={saving}
-                className="px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-white text-slate-900 font-bold uppercase tracking-wider cursor-pointer disabled:opacity-50"
+                className="px-5 py-2.5 rounded-xl btn-brand font-bold uppercase tracking-wider cursor-pointer disabled:opacity-50"
               >
                 {saving ? 'Guardando...' : editing ? 'Guardar cambios' : 'Registrar vehículo'}
               </button>

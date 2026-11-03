@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* Colores de la empresa: TenantProvider redefine estas variables con los de la BD */
+@theme inline {
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-secondary: var(--brand-secondary);
+  --color-brand-accent: var(--brand-accent);
+  --color-brand-on-primary: var(--brand-on-primary);
+  --color-brand-on-secondary: var(--brand-on-secondary);
+  --color-brand-on-accent: var(--brand-on-accent);
+}
+
 @layer base {
   :root {
     --color-night-blue: #0b132b;
@@ -8,6 +18,14 @@
     --color-silver: #e2e8f0;
     --color-neutral-gray: #64748b;
     --color-bg-surface: #f8fafc;
+
+    /* Valores neutros mientras carga la empresa */
+    --brand-primary: #0f172a;
+    --brand-secondary: #1e293b;
+    --brand-accent: #94a3b8;
+    --brand-on-primary: #ffffff;
+    --brand-on-secondary: #ffffff;
+    --brand-on-accent: #0f172a;
   }
 
   body {
@@ -62,4 +80,27 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: #475569;
+}
+
+/* Botón principal con el color de acento de la empresa */
+.btn-brand {
+  background-color: var(--brand-accent);
+  color: var(--brand-on-accent);
+  transition: filter 0.2s ease, box-shadow 0.2s ease;
+}
+.btn-brand:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.btn-brand svg {
+  color: inherit;
+}
+
+/* Barra de navegación con el color primario de la empresa */
+.brand-nav {
+  background-color: color-mix(in srgb, var(--brand-primary) 92%, transparent);
+  color: var(--brand-on-primary);
+}
+.brand-footer {
+  background-color: color-mix(in srgb, var(--brand-primary) 80%, #000);
+  color: color-mix(in srgb, var(--brand-on-primary) 70%, transparent);
 }

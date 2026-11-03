@@ -1,4 +1,4 @@
-import { levelPayment } from '../config/branding';
+import { levelPayment } from './format';
 import type { PublicSettings } from '../hooks/usePublicSettings';
 
 export const TRANSMISSION_LABELS: Record<string, string> = {

@@ -1,12 +1,24 @@
-import { BRANDING } from '../config/branding';
-import { clearSession, getToken } from '../auth/session';
+import { API_URL } from '../config/branding';
+import { clearSession, getToken, getUser, isSuperAdmin } from '../auth/session';
+import { getRequestedSlug, getSupportCompany } from '../tenant/tenantStore';
+import type { Company, CreateCompanyInput, Tenant, UpdateCompanyInput } from '../tenant/types';
 
-const API_BASE = BRANDING.apiUrl;
+const API_BASE = API_URL;
 
 export interface ApiErrorResponse {
   message: string | string[];
   statusCode?: number;
   error?: string;
+}
+
+/** Error de la API con el código HTTP (p. ej. 404 cuando la empresa no existe o está inactiva). */
+export class ApiError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+    this.name = 'ApiError';
+  }
 }
 
 export type LateFeeType = 'NONE' | 'PER_DAY' | 'PER_INSTALLMENT';
@@ -35,6 +47,18 @@ export interface StorageStatus {
 export const resolveMediaUrl = (url?: string | null) =>
   url && url.startsWith('media/') ? `${API_BASE}/${url}` : url || undefined;
 
+/** Rutas absolutas de la API (p. ej. el logo /api/v1/public/companies/:slug/logo) se resuelven contra su origen. */
+export const resolveApiAssetUrl = (url?: string | null): string | undefined => {
+  if (!url) return undefined;
+  if (/^(https?:|data:|blob:)/.test(url)) return url;
+  if (url.startsWith('media/')) return `${API_BASE}/${url}`;
+  try {
+    return new URL(url, API_BASE).toString();
+  } catch {
+    return url;
+  }
+};
+
 /** Cuando el backend rechaza el token se cierra la sesión y se envía al login. */
 function handleUnauthorized(endpoint: string) {
   if (endpoint.startsWith('/auth/login')) return;
@@ -44,9 +68,16 @@ function handleUnauthorized(endpoint: string) {
   }
 }
 
+/** Token de sesión y empresa: X-Tenant (slug) y, en modo soporte del superadmin, X-Company-Id. */
 function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
   const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const slug = getRequestedSlug();
+  if (slug) headers['X-Tenant'] = slug;
+  const support = getSupportCompany();
+  if (support && isSuperAdmin(getUser())) headers['X-Company-Id'] = support.id;
+  return headers;
 }
 
 async function parseError(res: Response): Promise<string> {
@@ -68,7 +99,7 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     handleUnauthorized(endpoint);
   }
   if (!res.ok) {
-    throw new Error(await parseError(res));
+    throw new ApiError(await parseError(res), res.status);
   }
 
   return (await res.json().catch(() => null)) as T;
@@ -193,4 +224,27 @@ export const api = {
   createExpense: (payload: any) => request<any>('/expenses', json('POST', payload)),
   updateExpense: (id: string, payload: any) => request<any>(`/expenses/${id}`, json('PUT', payload)),
   deleteExpense: (id: string) => request<any>(`/expenses/${id}`, json('DELETE')),
+
+  // Empresa resuelta (pública): marca, contactos y formatos
+  getTenant: () => request<Tenant>('/public/tenant'),
+
+  // Mi empresa (ADMIN de la empresa)
+  getMyCompany: () => request<Company>('/company'),
+  updateMyCompany: (payload: UpdateCompanyInput) => request<Company>('/company', json('PATCH', payload)),
+  uploadMyCompanyLogo: (base64: string, mime: string) =>
+    request<Company>('/company/logo', json('PUT', { base64, mime })),
+
+  // Plataforma (solo SUPERADMIN)
+  getPlatformCompanies: () => request<Company[]>('/platform/companies'),
+  getPlatformCompany: (id: string) => request<Company>(`/platform/companies/${id}`),
+  createPlatformCompany: (payload: CreateCompanyInput) =>
+    request<Company>('/platform/companies', json('POST', payload)),
+  updatePlatformCompany: (id: string, payload: UpdateCompanyInput) =>
+    request<Company>(`/platform/companies/${id}`, json('PATCH', payload)),
+  uploadPlatformCompanyLogo: (id: string, base64: string, mime: string) =>
+    request<Company>(`/platform/companies/${id}/logo`, json('PUT', { base64, mime })),
+  setPlatformCompanyStatus: (id: string, isActive: boolean) =>
+    request<Company>(`/platform/companies/${id}/status`, json('PATCH', { isActive })),
+  createPlatformCompanyAdmin: (id: string, payload: { email: string; fullName: string }) =>
+    request<any>(`/platform/companies/${id}/admins`, json('POST', payload)),
 };

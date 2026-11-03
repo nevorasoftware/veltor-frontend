@@ -14,7 +14,8 @@ import {
   TrendingDown,
   AlertCircle,
 } from 'lucide-react';
-import { BRANDING, SECTIONS, formatUSD, formatDateSV } from '../config/branding';
+import { formatMoney, formatDate } from '../utils/format';
+import { useTenant } from '../tenant/TenantContext';
 import { api } from '../api/client';
 import { clearSession } from '../auth/session';
 
@@ -31,6 +32,7 @@ const INTEREST_CONCEPTS = ['INTEREST', 'ACCRUED_INTEREST'];
 
 export const ClientPortalPage: React.FC = () => {
   const navigate = useNavigate();
+  const { tenant, sections } = useTenant();
   const [activeTab, setActiveTab] = useState<'schedule' | 'history'>('schedule');
   const [pickedLoanId, setSelectedLoanId] = useState<string | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
@@ -98,8 +100,8 @@ export const ClientPortalPage: React.FC = () => {
   const header = (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
       <div>
-        <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Portal del Cliente</span>
-        <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">{SECTIONS.clientPortal}</h1>
+        <span className="text-xs font-bold uppercase tracking-widest text-brand-accent">Portal del Cliente</span>
+        <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">{sections.clientPortal}</h1>
         {customer && (
           <p className="text-xs text-slate-400">
             Bienvenido, <span className="text-white font-semibold">{customer.fullName}</span>
@@ -158,7 +160,8 @@ export const ClientPortalPage: React.FC = () => {
 
   const loan = detail.loan;
   const isPaidOff = detail.snapshot.status === 'PAID_OFF';
-  const hasPaymentInfo = BRANDING.bankAccounts.length > 0 || BRANDING.paymentsEmail || BRANDING.paymentsWhatsapp;
+  const bankAccounts = Array.isArray(tenant.bankAccounts) ? tenant.bankAccounts : [];
+  const hasPaymentInfo = bankAccounts.length > 0 || tenant.paymentsEmail || tenant.paymentsWhatsapp;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -203,18 +206,18 @@ export const ClientPortalPage: React.FC = () => {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-xs">
             <div className="p-3.5 rounded-2xl bg-emerald-950/20 border border-emerald-500/20">
               <span className="text-emerald-400 block font-bold text-[11px] uppercase tracking-wider">Saldo a la Fecha</span>
-              <span className="text-xl sm:text-2xl font-black text-white font-mono mt-0.5 block">{formatUSD(currentBalance)}</span>
+              <span className="text-xl sm:text-2xl font-black text-white font-mono mt-0.5 block">{formatMoney(currentBalance)}</span>
               <span className="text-[10px] text-slate-400 block mt-1">Capital pendiente al día de hoy</span>
             </div>
 
             <div className="p-3.5 rounded-2xl bg-slate-800/40 border border-slate-700/60">
               <span className="text-slate-400 block font-medium">Próxima Cuota</span>
               <span className="text-xl sm:text-2xl font-black text-emerald-400 font-mono mt-0.5 block">
-                {nextInstallment ? formatUSD(nextDue) : '-'}
+                {nextInstallment ? formatMoney(nextDue) : '-'}
               </span>
               <span className={`text-[10px] block mt-1 ${nextLateFee > 0 ? 'text-rose-300 font-semibold' : 'text-slate-400'}`}>
                 {nextLateFee > 0
-                  ? `Incluye mora de ${formatUSD(nextLateFee)} (${nextInstallment.daysOverdue} días de atraso)`
+                  ? `Incluye mora de ${formatMoney(nextLateFee)} (${nextInstallment.daysOverdue} días de atraso)`
                   : `Tasa ${(Number(loan.monthlyRate) * 100).toFixed(2)}% mensual`}
               </span>
             </div>
@@ -222,7 +225,7 @@ export const ClientPortalPage: React.FC = () => {
             <div className="p-3.5 rounded-2xl bg-slate-800/40 border border-slate-700/60">
               <span className="text-slate-400 block font-medium">Próximo Vencimiento</span>
               <span className="text-sm font-bold text-slate-200 mt-1 block">
-                {nextInstallment ? formatDateSV(nextInstallment.dueDate) : '-'}
+                {nextInstallment ? formatDate(nextInstallment.dueDate) : '-'}
               </span>
               <span className="text-[10px] text-slate-400 block mt-1">
                 {nextInstallment ? `Cuota #${nextInstallment.number} de ${installments.length}` : 'Sin cuotas pendientes'}
@@ -240,8 +243,8 @@ export const ClientPortalPage: React.FC = () => {
 
           <div className="space-y-1.5 pt-2">
             <div className="flex justify-between text-[11px] text-slate-400">
-              <span>Capital amortizado: {formatUSD(originalPrincipal - currentBalance)}</span>
-              <span className="font-mono">Monto original: {formatUSD(originalPrincipal)}</span>
+              <span>Capital amortizado: {formatMoney(originalPrincipal - currentBalance)}</span>
+              <span className="font-mono">Monto original: {formatMoney(originalPrincipal)}</span>
             </div>
             <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden">
               <div
@@ -252,7 +255,7 @@ export const ClientPortalPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Canales de Pago (configurables por entorno) */}
+        {/* Canales de Pago (configurados por la empresa) */}
         {hasPaymentInfo && (
           <div className="lg:col-span-4 glass-panel rounded-3xl p-6 sm:p-8 border border-slate-700/80 bg-[#0F172A] space-y-4 shadow-2xl">
             <h4 className="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
@@ -266,30 +269,30 @@ export const ClientPortalPage: React.FC = () => {
               <span className="text-[10px] text-slate-400 block uppercase tracking-wider">Referencia</span>
               <span className="text-xl font-black text-white">{loan.code}</span>
             </div>
-            {BRANDING.bankAccounts.length > 0 && (
+            {bankAccounts.length > 0 && (
               <div className="text-[11px] text-slate-400 space-y-1 bg-slate-800/30 p-3 rounded-xl border border-slate-700/40">
-                {BRANDING.bankAccounts.map((acc: { bank: string; detail: string }) => (
+                {bankAccounts.map((acc: { bank: string; detail: string }) => (
                   <div key={acc.bank + acc.detail}>
                     · <span className="text-slate-300 font-semibold">{acc.bank}:</span> {acc.detail}
                   </div>
                 ))}
-                {BRANDING.bankAccountHolder && (
+                {tenant.bankAccountHolder && (
                   <div>
-                    · <span className="text-slate-300 font-semibold">Titular:</span> {BRANDING.bankAccountHolder}
+                    · <span className="text-slate-300 font-semibold">Titular:</span> {tenant.bankAccountHolder}
                   </div>
                 )}
               </div>
             )}
-            {(BRANDING.paymentsEmail || BRANDING.paymentsWhatsapp) && (
+            {(tenant.paymentsEmail || tenant.paymentsWhatsapp) && (
               <p className="text-[11px] text-slate-400">
                 Para reportar un comprobante envíalo
-                {BRANDING.paymentsEmail && (
+                {tenant.paymentsEmail && (
                   <>
-                    {' '}a <a className="text-slate-200 underline" href={`mailto:${BRANDING.paymentsEmail}?subject=Pago ${loan.code}`}>{BRANDING.paymentsEmail}</a>
+                    {' '}a <a className="text-slate-200 underline" href={`mailto:${tenant.paymentsEmail}?subject=Pago ${loan.code}`}>{tenant.paymentsEmail}</a>
                   </>
                 )}
-                {BRANDING.paymentsEmail && BRANDING.paymentsWhatsapp ? ' o' : ''}
-                {BRANDING.paymentsWhatsapp && <> por WhatsApp al {BRANDING.paymentsWhatsapp}</>}.
+                {tenant.paymentsEmail && tenant.paymentsWhatsapp ? ' o' : ''}
+                {tenant.paymentsWhatsapp && <> por WhatsApp al {tenant.paymentsWhatsapp}</>}.
               </p>
             )}
           </div>
@@ -354,7 +357,7 @@ export const ClientPortalPage: React.FC = () => {
             </div>
           </div>
           <div className="flex items-baseline gap-3">
-            <span className="text-2xl sm:text-3xl font-black font-mono text-emerald-400">{formatUSD(currentBalance)}</span>
+            <span className="text-2xl sm:text-3xl font-black font-mono text-emerald-400">{formatMoney(currentBalance)}</span>
             <span className="text-xs text-slate-400 font-medium">
               ({paidCount} cuotas pagadas de {installments.length})
             </span>
@@ -395,12 +398,12 @@ export const ClientPortalPage: React.FC = () => {
                       }`}
                     >
                       <td className="py-2.5 px-3 font-bold text-slate-400">{row.number}</td>
-                      <td className="py-2.5 px-3 font-sans text-slate-300">{formatDateSV(row.dueDate)}</td>
-                      <td className="py-2.5 px-3 text-right text-slate-400">{formatUSD(row.openingBalance)}</td>
-                      <td className="py-2.5 px-3 text-right text-emerald-400 font-bold">{formatUSD(row.principal)}</td>
-                      <td className="py-2.5 px-3 text-right text-slate-400">{formatUSD(row.interest)}</td>
-                      <td className="py-2.5 px-3 text-right font-bold text-white">{formatUSD(row.payment)}</td>
-                      <td className="py-2.5 px-3 text-right font-bold text-slate-100">{formatUSD(row.closingBalance)}</td>
+                      <td className="py-2.5 px-3 font-sans text-slate-300">{formatDate(row.dueDate)}</td>
+                      <td className="py-2.5 px-3 text-right text-slate-400">{formatMoney(row.openingBalance)}</td>
+                      <td className="py-2.5 px-3 text-right text-emerald-400 font-bold">{formatMoney(row.principal)}</td>
+                      <td className="py-2.5 px-3 text-right text-slate-400">{formatMoney(row.interest)}</td>
+                      <td className="py-2.5 px-3 text-right font-bold text-white">{formatMoney(row.payment)}</td>
+                      <td className="py-2.5 px-3 text-right font-bold text-slate-100">{formatMoney(row.closingBalance)}</td>
                       <td className="py-2.5 px-3 text-center font-sans">
                         {isPaid ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
@@ -453,13 +456,13 @@ export const ClientPortalPage: React.FC = () => {
                     <tr key={p.id} className="hover:bg-slate-800/30 transition-colors">
                       <td className="py-3.5 px-4 font-sans">
                         <span className="font-mono font-bold text-white block">{p.code}</span>
-                        <span className="text-slate-400 text-[11px]">{formatDateSV(p.effectiveDate)}</span>
+                        <span className="text-slate-400 text-[11px]">{formatDate(p.effectiveDate)}</span>
                       </td>
                       <td className="py-3.5 px-4 text-slate-300 font-sans">{PAYMENT_METHOD_LABELS[p.paymentMethod] || p.paymentMethod}</td>
-                      <td className="py-3.5 px-4 text-right font-bold text-white">{formatUSD(p.amountReceived)}</td>
-                      <td className="py-3.5 px-4 text-right text-emerald-400 font-bold">{formatUSD(p.principal)}</td>
-                      <td className="py-3.5 px-4 text-right text-slate-400">{formatUSD(p.interest)}</td>
-                      <td className="py-3.5 px-4 text-right font-bold text-white">{formatUSD(p.resultingBalance)}</td>
+                      <td className="py-3.5 px-4 text-right font-bold text-white">{formatMoney(p.amountReceived)}</td>
+                      <td className="py-3.5 px-4 text-right text-emerald-400 font-bold">{formatMoney(p.principal)}</td>
+                      <td className="py-3.5 px-4 text-right text-slate-400">{formatMoney(p.interest)}</td>
+                      <td className="py-3.5 px-4 text-right font-bold text-white">{formatMoney(p.resultingBalance)}</td>
                     </tr>
                   ))}
                 </tbody>
