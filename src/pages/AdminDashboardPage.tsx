@@ -3009,8 +3009,8 @@ export const AdminDashboardPage: React.FC = () => {
                 </div>
 
                 {paymentArrears && (
-                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs space-y-1">
-                    <div className="flex justify-between gap-3 font-bold text-rose-200">
+                  <div className={`p-3 rounded-xl text-xs space-y-1 border ${paymentArrears.inGrace ? "bg-amber-500/10 border-amber-500/30" : "bg-rose-500/10 border-rose-500/30"}`}>
+                    <div className={`flex justify-between gap-3 font-bold ${paymentArrears.inGrace ? "text-amber-200" : "text-rose-200"}`}>
                       <span>
                         Exigible a hoy · {paymentArrears.overdueInstallments} cuota(s) vencida(s) · {paymentArrears.daysOverdue} día(s)
                         {paymentArrears.inGrace ? ' (en gracia)' : ''}
