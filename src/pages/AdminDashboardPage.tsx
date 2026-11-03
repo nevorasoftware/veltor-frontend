@@ -1050,7 +1050,7 @@ export const AdminDashboardPage: React.FC = () => {
                 <div
                   key={ln.id}
                   className={`p-4 rounded-xl border space-y-3 text-xs ${
-                    arrearsByLoan.has(ln.id) ? 'bg-rose-950/30 border-rose-500/40' : 'bg-slate-800/60 border-slate-700/60'
+                    arrearsByLoan.has(ln.id) ? (arrearsByLoan.get(ln.id)!.inGrace ? 'bg-amber-950/20 border-amber-500/40' : 'bg-rose-950/30 border-rose-500/40') : 'bg-slate-800/60 border-slate-700/60'
                   }`}
                 >
                   <div className="flex justify-between items-start gap-2">
@@ -1242,7 +1242,7 @@ export const AdminDashboardPage: React.FC = () => {
                 key={ln.id}
                 id={`loan-${ln.id}`}
                 className={`p-4 sm:p-6 rounded-2xl border flex flex-col xl:flex-row xl:items-center justify-between gap-4 sm:gap-6 ${
-                  arrearsByLoan.has(ln.id) ? 'bg-rose-950/25 border-rose-500/40' : 'bg-slate-800/50 border-slate-700'
+                  arrearsByLoan.has(ln.id) ? (arrearsByLoan.get(ln.id)!.inGrace ? 'bg-amber-950/20 border-amber-500/40' : 'bg-rose-950/25 border-rose-500/40') : 'bg-slate-800/50 border-slate-700'
                 } ${highlightLoanId === ln.id ? 'ring-2 ring-brand-accent' : ''}`}
               >
                 <div className="space-y-2 min-w-0">
