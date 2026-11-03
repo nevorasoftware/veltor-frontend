@@ -7,6 +7,7 @@ import { HomePage } from './pages/HomePage';
 import { CatalogPage } from './pages/CatalogPage';
 import { SimulatorPage } from './pages/SimulatorPage';
 import { LoginPage } from './pages/LoginPage';
+import { ForgotPasswordPage, ResetPasswordPage } from './pages/PasswordRecoveryPages';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { ClientPortalPage } from './pages/ClientPortalPage';
 import { PlatformPage } from './pages/PlatformPage';
@@ -35,6 +36,8 @@ export const App: React.FC = () => {
                 <Route path="/catalogo" element={<CatalogPage />} />
                 <Route path="/simulador" element={<SimulatorPage />} />
                 <Route path="/login" element={<LoginPage />} />
+                <Route path="/recuperar" element={<ForgotPasswordPage />} />
+                <Route path="/restablecer" element={<ResetPasswordPage />} />
                 <Route
                   path="/admin"
                   element={

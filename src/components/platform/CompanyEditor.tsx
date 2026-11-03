@@ -11,6 +11,7 @@ import {
   type CompanyFormState,
   type PendingLogo,
 } from '../company/CompanyFields';
+import { EMPTY_PRODUCT_FORM, ProductFields, productFormToInput, validateProductForm, type ProductFormState } from './ProductFields';
 
 interface CompanyEditorProps {
   /** Empresa a editar; sin ella se crea una nueva. */
@@ -26,12 +27,16 @@ export const CompanyEditor: React.FC<CompanyEditorProps> = ({ company, base, onC
   const isNew = !company;
   const [form, setForm] = useState<CompanyFormState>(() => (company ? companyToForm(company) : companyToForm(base, true)));
   const [pendingLogo, setPendingLogo] = useState<PendingLogo | null>(null);
+  const [product, setProduct] = useState<ProductFormState>(EMPTY_PRODUCT_FORM);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const problems = validateCompanyForm(form, { withSlug: true, withAdmin: isNew });
+    const problems = [
+      ...validateCompanyForm(form, { withSlug: true, withAdmin: isNew }),
+      ...(isNew ? validateProductForm(product) : []),
+    ];
     setErrors(problems);
     if (problems.length) return;
 
@@ -40,14 +45,22 @@ export const CompanyEditor: React.FC<CompanyEditorProps> = ({ company, base, onC
       const branding = formToBranding(form);
       const domains = parseDomains(form.domains);
       let saved: Company;
+      let adminNote = '';
       if (isNew) {
-        saved = await api.createPlatformCompany({
+        const created = await api.createPlatformCompany({
           ...branding,
           slug: form.slug,
           domains,
           adminEmail: form.adminEmail.trim().toLowerCase(),
           adminName: form.adminName.trim(),
+          product: productFormToInput(product),
         });
+        saved = created.company;
+        const admin = created.admin;
+        // Si el correo no salió, la API devuelve la contraseña temporal una sola vez
+        adminNote = admin?.temporaryPassword
+          ? ` No se pudo enviar el correo: entregue al administrador la contraseña temporal ${admin.temporaryPassword} (se muestra una sola vez).`
+          : ` ${admin?.message || `Se envió la contraseña temporal a ${form.adminEmail.trim()}.`}`;
       } else {
         saved = await api.updatePlatformCompany(company.id, { ...branding, slug: form.slug, domains });
       }
@@ -56,14 +69,14 @@ export const CompanyEditor: React.FC<CompanyEditorProps> = ({ company, base, onC
           saved = await api.uploadPlatformCompanyLogo(saved.id, pendingLogo.base64, pendingLogo.mime);
         } catch (err: any) {
           // La empresa ya quedó guardada: se avisa del logo sin perder el resto
-          onSaved(saved, `La empresa se guardó, pero el logo no: ${err.message}`);
+          onSaved(saved, `La empresa se guardó, pero el logo no: ${err.message}.${adminNote}`);
           return;
         }
       }
       onSaved(
         saved,
         isNew
-          ? `Empresa "${saved.name}" creada. Se envió la contraseña temporal a ${form.adminEmail.trim()}.`
+          ? `Empresa "${saved.name}" creada.${adminNote}`
           : `Empresa "${saved.name}" actualizada.`,
       );
     } catch (err: any) {
@@ -95,6 +108,8 @@ export const CompanyEditor: React.FC<CompanyEditorProps> = ({ company, base, onC
         withAdmin={isNew}
         autoSlug={isNew}
       />
+
+      {isNew && <ProductFields value={product} onChange={(patch) => setProduct((p) => ({ ...p, ...patch }))} />}
 
       {errors.length > 0 && (
         <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs space-y-1">

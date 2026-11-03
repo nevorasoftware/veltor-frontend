@@ -222,8 +222,10 @@ export const LoginPage: React.FC = () => {
                   className={inputClass}
                 />
               </div>
-              <p className="text-[11px] text-slate-500 mt-1.5">
-                ¿Olvidaste tu contraseña? Solicita a un administrador que restablezca tu acceso.
+              <p className="text-[11px] mt-1.5 text-right">
+                <Link to="/recuperar" className="text-brand-accent hover:underline">
+                  ¿Olvidaste tu contraseña?
+                </Link>
               </p>
             </div>
 

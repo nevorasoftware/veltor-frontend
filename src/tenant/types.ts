@@ -55,11 +55,31 @@ export interface CompanyBrandingInput {
   timezone: string;
 }
 
+/** Producto financiero inicial de la empresa. Tasas en decimal mensual (0.015 = 1.5 %); prima en %. */
+export interface FinancingProductInput {
+  name: string;
+  minMonthlyRate: number;
+  maxMonthlyRate: number;
+  defaultMonthlyRate: number;
+  minTermMonths: number;
+  maxTermMonths: number;
+  minDownPercent: number;
+  graceDays: number;
+  lateRateMonthly: number;
+}
+
 export interface CreateCompanyInput extends CompanyBrandingInput {
   slug: string;
   domains: string[];
   adminEmail: string;
   adminName: string;
+  product: FinancingProductInput;
+}
+
+/** Respuesta de POST /platform/companies. */
+export interface CreateCompanyResult {
+  company: Company;
+  admin?: { emailStatus?: string; temporaryPassword?: string; message?: string };
 }
 
 export interface UpdateCompanyInput extends Partial<CompanyBrandingInput> {

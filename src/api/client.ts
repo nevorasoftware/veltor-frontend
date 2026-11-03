@@ -1,7 +1,7 @@
 import { API_URL } from '../config/branding';
 import { clearSession, getToken, getUser, isSuperAdmin } from '../auth/session';
 import { getRequestedSlug, getSupportCompany } from '../tenant/tenantStore';
-import type { Company, CreateCompanyInput, Tenant, UpdateCompanyInput } from '../tenant/types';
+import type { Company, CreateCompanyInput, CreateCompanyResult, Tenant, UpdateCompanyInput } from '../tenant/types';
 
 const API_BASE = API_URL;
 
@@ -61,7 +61,7 @@ export const resolveApiAssetUrl = (url?: string | null): string | undefined => {
 
 /** Cuando el backend rechaza el token se cierra la sesión y se envía al login. */
 function handleUnauthorized(endpoint: string) {
-  if (endpoint.startsWith('/auth/login')) return;
+  if (/^\/auth\/(login|forgot-password|reset-password)/.test(endpoint)) return;
   clearSession();
   if (!window.location.pathname.startsWith('/login')) {
     window.location.assign('/login?expired=1');
@@ -153,6 +153,10 @@ export const api = {
   // Autenticación
   login: (payload: { email: string; password: string }) => request<any>('/auth/login', json('POST', payload)),
   getProfile: () => request<any>('/auth/me'),
+  // Recuperación de contraseña (públicas; la respuesta de forgot siempre es neutra)
+  forgotPassword: (email: string) => request<{ message?: string }>('/auth/forgot-password', json('POST', { email })),
+  resetPassword: (token: string, newPassword: string) =>
+    request<{ message?: string }>('/auth/reset-password', json('POST', { token, newPassword })),
   changePassword: (currentPassword: string, newPassword: string) =>
     request<any>('/auth/change-password', json('POST', { currentPassword, newPassword })),
 
@@ -238,7 +242,7 @@ export const api = {
   getPlatformCompanies: () => request<Company[]>('/platform/companies'),
   getPlatformCompany: (id: string) => request<Company>(`/platform/companies/${id}`),
   createPlatformCompany: (payload: CreateCompanyInput) =>
-    request<Company>('/platform/companies', json('POST', payload)),
+    request<CreateCompanyResult>('/platform/companies', json('POST', payload)),
   updatePlatformCompany: (id: string, payload: UpdateCompanyInput) =>
     request<Company>(`/platform/companies/${id}`, json('PATCH', payload)),
   uploadPlatformCompanyLogo: (id: string, base64: string, mime: string) =>
