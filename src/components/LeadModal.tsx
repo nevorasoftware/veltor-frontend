@@ -82,10 +82,10 @@ export const LeadModal: React.FC<LeadModalProps> = ({ isOpen, onClose, vehicle, 
 
   return (
     <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm overflow-y-auto animate-fadeIn">
-      <div className="relative w-full max-w-lg glass-panel rounded-2xl border border-slate-700 bg-[#0F172A] p-5 sm:p-8 my-4 shadow-2xl text-slate-100">
+      <div className="relative w-full max-w-lg glass-panel rounded-2xl border border-slate-700 bg-[#0F172A] p-5 sm:p-8 shadow-2xl text-slate-100 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain">
         <button
           onClick={handleClose}
-          className="absolute top-5 right-5 p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          className="sticky top-0 float-right z-20 ml-3 p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800 border border-slate-700 transition-colors cursor-pointer"
           aria-label="Cerrar ventana"
         >
           <X className="w-5 h-5" />

@@ -297,13 +297,13 @@ export const AdminVehiclesTab: React.FC<AdminVehiclesTabProps> = ({ vehicles, on
         <div className="fixed inset-0 z-50 flex items-start justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-sm overflow-y-auto">
           <form
             onSubmit={handleSave}
-            className="relative w-full max-w-3xl my-6 rounded-2xl border border-slate-700 bg-[#0F172A] p-6 space-y-5 shadow-2xl text-xs"
+            className="relative w-full max-w-3xl rounded-2xl border border-slate-700 bg-[#0F172A] px-4 pb-4 sm:px-6 sm:pb-6 space-y-5 shadow-2xl text-xs max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="sticky top-0 z-20 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 sm:pt-6 pb-3 bg-[#0F172A] flex items-center justify-between border-b border-slate-800">
               <h3 className="text-base font-bold text-white">
                 {editing ? `Editar vehículo · ${editing.code}` : 'Nuevo vehículo'}
               </h3>
-              <button type="button" onClick={() => setModalOpen(false)} className="p-1 text-slate-400 hover:text-white cursor-pointer">
+              <button type="button" onClick={() => setModalOpen(false)} aria-label="Cerrar" className="p-1.5 rounded-lg text-slate-400 hover:text-white bg-slate-800 border border-slate-700 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>

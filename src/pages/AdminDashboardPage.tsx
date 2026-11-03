@@ -113,6 +113,8 @@ export const AdminDashboardPage: React.FC = () => {
     daysOverdue: number;
   } | null>(null);
   const [payoffTotal, setPayoffTotal] = useState<string | null>(null);
+  /** Exigible a hoy del crédito (cuotas vencidas + seguro + mora), según GET /reports/delinquency. */
+  const [paymentArrears, setPaymentArrears] = useState<DelinquencyItem | null>(null);
 
   // Acceso al portal del cliente
   const [portalAccessInfo, setPortalAccessInfo] = useState<{ loanCode: string; email: string; temporaryPassword: string } | null>(null);
@@ -470,11 +472,18 @@ export const AdminDashboardPage: React.FC = () => {
     setPaymentSuccessMsg(null);
     setNextInstallmentInfo(null);
     setPayoffTotal(null);
+    setPaymentArrears(null);
     setPaymentIdempotencyKey(crypto.randomUUID());
     setPaymentModalOpen(true);
 
     try {
-      const [ledger, quote] = await Promise.all([api.getLoanLedger(loan.id), api.getPayoffQuote(loan.id)]);
+      const [ledger, quote, delinquency] = await Promise.all([
+        api.getLoanLedger(loan.id),
+        api.getPayoffQuote(loan.id),
+        api.getDelinquencySummary().catch(() => null),
+      ]);
+      const arrears = delinquency?.loans.find((it) => it.loanId === loan.id) || null;
+      setPaymentArrears(arrears);
       const next = ledger?.snapshot?.current?.installments?.find((i: any) =>
         ['PENDING', 'PARTIAL', 'OVERDUE'].includes(i.status),
       );
@@ -484,6 +493,8 @@ export const AdminDashboardPage: React.FC = () => {
         setNextInstallmentInfo({ number: next.number, dueDate: next.dueDate, payment: due, lateFee, daysOverdue: next.daysOverdue ?? 0 });
         setPaymentAmount(due);
       }
+      // Con cuotas vencidas se sugiere todo lo exigible a hoy (lo calcula el backend con el ledger)
+      if (arrears) setPaymentAmount(arrears.totalDue);
       if (quote?.total) setPayoffTotal(quote.total);
     } catch {
       // Si falla la consulta el cajero ingresa el monto manualmente
@@ -660,6 +671,16 @@ export const AdminDashboardPage: React.FC = () => {
     { value: 'CURRENT' as const, label: 'Al día', count: loans.filter((l) => !arrearsByLoan.has(l.id)).length },
     { value: 'ARREARS' as const, label: 'En mora', count: loans.filter((l) => arrearsByLoan.has(l.id)).length },
   ];
+
+  // Crédito de un prospecto ya convertido: el prospecto no guarda el vínculo, se ubica por vehículo y luego por cliente
+  const convertedLeadLoan = useMemo(() => {
+    if (!selectedLead || selectedLead.status !== 'CONVERTED') return null;
+    const vehicleId = selectedLead.vehicleId || selectedLead.vehicle?.id;
+    const byVehicle = vehicleId ? loans.find((ln) => ln.vehicleId === vehicleId || ln.vehicle?.id === vehicleId) : null;
+    if (byVehicle) return byVehicle;
+    const name = String(selectedLead.fullName || '').trim().toLowerCase();
+    return loans.find((ln) => String(ln.customer?.fullName || '').trim().toLowerCase() === name) || null;
+  }, [selectedLead, loans]);
 
   /** Abre un crédito desde la ficha de mora: pestaña de créditos, filtrado y resaltado. */
   const openLoanFromArrears = (loanId: string, loanCode: string) => {
@@ -1902,10 +1923,11 @@ export const AdminDashboardPage: React.FC = () => {
       {/* MODAL INTEGRAL: GESTIÓN DE PROSPECTO Y FORMALIZACIÓN A CRÉDITO ACTIVO */}
       {leadModalOpen && selectedLead && (
         <div className="fixed inset-0 z-50 flex items-start justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
-          <div className="relative w-full max-w-4xl glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-4 sm:p-8 shadow-2xl my-6 text-slate-100 space-y-6">
+          <div className="relative w-full max-w-4xl glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-4 sm:p-8 shadow-2xl text-slate-100 space-y-6 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain">
             <button
               onClick={() => setLeadModalOpen(false)}
-              className="absolute top-5 right-5 z-10 p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800 border border-slate-700 transition-colors cursor-pointer"
+              aria-label="Cerrar"
+              className="sticky top-0 float-right z-20 ml-3 p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800 border border-slate-700 transition-colors cursor-pointer"
             >
               ✕
             </button>
@@ -1972,12 +1994,32 @@ export const AdminDashboardPage: React.FC = () => {
                         setLeadModalOpen(false);
                         setActiveTab('loans');
                         setLoanFilter('ALL');
-                        setLoanSearch(selectedLead.fullName || '');
+                        setLoanSearch(convertedLeadLoan?.code || selectedLead.fullName || '');
                       }}
                       className="shrink-0 px-3 py-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 font-semibold cursor-pointer"
                     >
                       Ver crédito
                     </button>
+                  </div>
+                )}
+                {selectedLead.status === 'CONVERTED' && convertedLeadLoan && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-xl bg-slate-800/50 border border-slate-700 text-xs">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Crédito</span>
+                      <span className="font-mono font-bold text-white">{convertedLeadLoan.code}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Plazo</span>
+                      <span className="font-mono font-bold text-white">{convertedLeadLoan.termCount} meses</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Prima</span>
+                      <span className="font-mono font-bold text-white">{formatMoney(convertedLeadLoan.downPayment)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Monto financiado</span>
+                      <span className="font-mono font-bold text-white">{formatMoney(convertedLeadLoan.originalPrincipal)}</span>
+                    </div>
                   </div>
                 )}
                 <fieldset disabled={selectedLead.status === 'CONVERTED'} className="space-y-5 disabled:opacity-80">
@@ -2010,10 +2052,10 @@ export const AdminDashboardPage: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-slate-300 font-semibold mb-1">Correo Electrónico *</label>
+                    <label className="block text-slate-300 font-semibold mb-1">Correo Electrónico{selectedLead.status === 'CONVERTED' ? '' : ' *'}</label>
                     <input
                       type="email"
-                      required
+                      required={selectedLead.status !== 'CONVERTED'}
                       value={leadEmail}
                       onChange={(e) => setLeadEmail(e.target.value)}
                       className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white outline-none focus:border-white"
@@ -2835,8 +2877,8 @@ export const AdminDashboardPage: React.FC = () => {
       {/* Modal de Registro de Pago / Abono Extraordinario */}
       {paymentModalOpen && selectedLoan && (
         <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
-          <div className="w-full max-w-lg glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-4 sm:p-8 my-4 shadow-2xl text-slate-100 space-y-6">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+          <div className="w-full max-w-lg glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] px-4 pb-4 sm:px-8 sm:pb-8 shadow-2xl text-slate-100 space-y-6 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain">
+            <div className="sticky top-0 z-20 -mx-4 sm:-mx-8 px-4 sm:px-8 pt-4 sm:pt-8 pb-4 bg-[#0F172A] flex items-center justify-between border-b border-slate-800">
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                   Registro de Pago · {selectedLoan.code}
@@ -2845,7 +2887,8 @@ export const AdminDashboardPage: React.FC = () => {
               </div>
               <button
                 onClick={() => setPaymentModalOpen(false)}
-                className="p-2 text-slate-400 hover:text-white cursor-pointer"
+                aria-label="Cerrar"
+                className="p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800 border border-slate-700 cursor-pointer"
               >
                 ✕
               </button>
@@ -2870,7 +2913,8 @@ export const AdminDashboardPage: React.FC = () => {
                       const kind = e.target.value as typeof paymentKind;
                       setPaymentKind(kind);
                       if (kind === 'PAYOFF' && payoffTotal) setPaymentAmount(payoffTotal);
-                      if (kind === 'INSTALLMENT' && nextInstallmentInfo) setPaymentAmount(nextInstallmentInfo.payment);
+                      if (kind === 'INSTALLMENT' && paymentArrears) setPaymentAmount(paymentArrears.totalDue);
+                      else if (kind === 'INSTALLMENT' && nextInstallmentInfo) setPaymentAmount(nextInstallmentInfo.payment);
                     }}
                     className="w-full px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white"
                   >
@@ -2964,6 +3008,30 @@ export const AdminDashboardPage: React.FC = () => {
                   />
                 </div>
 
+                {paymentArrears && (
+                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs space-y-1">
+                    <div className="flex justify-between gap-3 font-bold text-rose-200">
+                      <span>
+                        Exigible a hoy · {paymentArrears.overdueInstallments} cuota(s) vencida(s) · {paymentArrears.daysOverdue} día(s)
+                        {paymentArrears.inGrace ? ' (en gracia)' : ''}
+                      </span>
+                      <span className="font-mono">{formatMoney(paymentArrears.totalDue)}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-300">
+                      <span>Capital e interés vencidos</span>
+                      <span className="font-mono">{formatMoney(paymentArrears.overduePrincipalInterest)}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-300">
+                      <span>Seguro vencido</span>
+                      <span className="font-mono">{formatMoney(paymentArrears.overdueInsurance)}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-300">
+                      <span>Mora a hoy</span>
+                      <span className="font-mono">{formatMoney(paymentArrears.lateFees)}</span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="p-3 bg-slate-800/40 rounded-xl text-xs text-slate-400 space-y-1">
                   <div className="flex justify-between">
                     <span>Saldo actual de capital:</span>
@@ -2971,7 +3039,7 @@ export const AdminDashboardPage: React.FC = () => {
                   </div>
                   {nextInstallmentInfo && (
                     <div className="flex justify-between">
-                      <span>Próxima cuota (#{nextInstallmentInfo.number} · {formatDate(nextInstallmentInfo.dueDate)}):</span>
+                      <span>Próxima cuota con seguro (#{nextInstallmentInfo.number} · {formatDate(nextInstallmentInfo.dueDate)}):</span>
                       <span className="font-mono text-white">{formatMoney(nextInstallmentInfo.payment)}</span>
                     </div>
                   )}
@@ -3009,10 +3077,11 @@ export const AdminDashboardPage: React.FC = () => {
       {/* MODAL: REGISTRAR / EDITAR GASTO CONTABLE (PRODUCTO O SERVICIO) */}
       {expenseModalOpen && (
         <div className="fixed inset-0 z-50 flex items-start justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
-          <div className="relative w-full max-w-2xl glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-4 sm:p-8 shadow-2xl my-6 text-slate-100 space-y-6">
+          <div className="relative w-full max-w-2xl glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-4 sm:p-8 shadow-2xl text-slate-100 space-y-6 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain">
             <button
               onClick={() => setExpenseModalOpen(false)}
-              className="absolute top-5 right-5 z-10 p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800 border border-slate-700 transition-colors cursor-pointer"
+              aria-label="Cerrar"
+              className="sticky top-0 float-right z-20 ml-3 p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800 border border-slate-700 transition-colors cursor-pointer"
             >
               ✕
             </button>
@@ -3310,7 +3379,7 @@ export const AdminDashboardPage: React.FC = () => {
       {/* MODAL: CONFIRMACIÓN DE ELIMINACIÓN DE GASTO */}
       {deleteExpenseId && (
         <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
-          <div className="w-full max-w-md glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-6 shadow-2xl text-slate-100 space-y-4">
+          <div className="w-full max-w-md glass-panel rounded-3xl border border-slate-700 bg-[#0F172A] p-6 shadow-2xl text-slate-100 space-y-4 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain">
             <div className="flex items-center gap-3 text-rose-400">
               <div className="p-2.5 rounded-2xl bg-rose-500/10 border border-rose-500/20">
                 <Trash2 className="w-5 h-5" />

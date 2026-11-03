@@ -55,7 +55,7 @@ const AddAdminDialog: React.FC<{ company: Company; onClose: () => void; onDone: 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true">
-      <form onSubmit={submit} className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-[#0F172A] p-6 space-y-4 shadow-2xl">
+      <form onSubmit={submit} className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-[#0F172A] p-6 space-y-4 shadow-2xl max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain">
         <button type="button" onClick={onClose} aria-label="Cerrar" className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer">
           <X className="w-4 h-4" />
         </button>
@@ -111,7 +111,7 @@ const DeleteCompanyDialog: React.FC<{ company: Company; onClose: () => void; onD
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true">
-      <form onSubmit={submit} className="relative w-full max-w-md rounded-2xl border border-rose-500/40 bg-[#0F172A] p-6 space-y-4 shadow-2xl">
+      <form onSubmit={submit} className="relative w-full max-w-md rounded-2xl border border-rose-500/40 bg-[#0F172A] p-6 space-y-4 shadow-2xl max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain">
         <button type="button" onClick={onClose} aria-label="Cerrar" className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer">
           <X className="w-4 h-4" />
         </button>
