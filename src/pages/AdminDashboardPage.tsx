@@ -1347,7 +1347,7 @@ export const AdminDashboardPage: React.FC = () => {
               rows={2}
               value={staffEmailsInput}
               onChange={(e) => setStaffEmailsInput(e.target.value)}
-              placeholder="admin@empresa.com, ventas@empresa.com"
+              placeholder="Correos separados por comas"
               className="w-full px-3 py-2 bg-slate-900 border border-slate-600 focus:border-white focus:ring-1 focus:ring-white rounded-xl text-sm font-mono text-white outline-none resize-none"
             />
 

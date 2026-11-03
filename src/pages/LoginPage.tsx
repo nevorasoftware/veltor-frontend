@@ -199,7 +199,7 @@ export const LoginPage: React.FC = () => {
                   autoCorrect="off"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="correo@empresa.com"
+                  placeholder="Correo electrónico"
                   className={inputClass}
                 />
               </div>
