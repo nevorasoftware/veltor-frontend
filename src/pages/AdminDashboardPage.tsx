@@ -71,7 +71,7 @@ export const AdminDashboardPage: React.FC = () => {
   const delinquencyQuery = useQuery({ queryKey: ['delinquency'], queryFn: () => api.getDelinquencySummary() });
   const arrearsByLoan = useMemo(() => {
     const map = new Map<string, DelinquencyItem>();
-    (delinquencyQuery.data?.items || []).forEach((it) => map.set(it.loanId, it));
+    (delinquencyQuery.data?.loans || []).forEach((it) => map.set(it.loanId, it));
     return map;
   }, [delinquencyQuery.data]);
 
@@ -674,8 +674,12 @@ export const AdminDashboardPage: React.FC = () => {
     const it = arrearsByLoan.get(loanId);
     if (!it) return null;
     return (
-      <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-rose-500/15 border border-rose-500/40 text-rose-300 whitespace-nowrap">
-        En mora · {it.overdueInstallments} cuota(s) · {formatMoney(it.totalDue)}
+      <span
+        className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border whitespace-nowrap ${
+          it.inGrace ? "bg-amber-500/15 border-amber-500/40 text-amber-300" : "bg-rose-500/15 border-rose-500/40 text-rose-300"
+        }`}
+      >
+        {it.inGrace ? "En gracia" : "En mora"} · {it.overdueInstallments} cuota(s) · {formatMoney(it.totalDue)}
       </span>
     );
   };

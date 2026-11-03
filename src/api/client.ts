@@ -258,25 +258,38 @@ export const api = {
     request<any>(`/platform/companies/${id}`, json('DELETE', { confirmSlug })),
 };
 
-/** Resumen de mora (GET /reports/delinquency). Montos como texto decimal. */
+/** Resumen de mora (GET /reports/delinquency), calculado con el ledger a la fecha. Montos como texto con 2 decimales. */
 export interface DelinquencyItem {
   loanId: string;
-  loanCode: string;
+  code: string;
+  customerId: string;
   customerName: string;
-  vehicleLabel?: string | null;
+  vehicleTitle: string;
   overdueInstallments: number;
+  oldestDueDate: string;
   daysOverdue: number;
-  overdueAmount: string | number;
-  lateFee: string | number;
-  totalDue: string | number;
+  graceDays: number;
+  /** Vencido pero todavía dentro de los días de gracia (sin mora). */
+  inGrace: boolean;
+  overduePrincipalInterest: string;
+  overdueInsurance: string;
+  lateFees: string;
+  totalDue: string;
 }
 
 export interface DelinquencySummary {
-  asOfDate: string;
-  loansInArrears: number;
-  totalOverdue: string | number;
-  totalOverdueInstallments?: number;
-  totalLateFees?: string | number;
-  totalInsurance?: string | number;
-  items: DelinquencyItem[];
+  asOf: string;
+  timezone: string;
+  currency: string;
+  totals: {
+    loansWithOverdue: number;
+    loansDelinquent: number;
+    loansInGrace: number;
+    overdueInstallments: number;
+    overduePrincipalInterest: string;
+    overdueInsurance: string;
+    lateFees: string;
+    totalDue: string;
+  };
+  loans: DelinquencyItem[];
 }
