@@ -13,6 +13,7 @@ import {
   tenantKey,
 } from './tenantStore';
 import { applyBrandColors, applyFavicon, initialFavicon } from './theme';
+import { applyAppManifest } from '../pwa/install';
 import type { Tenant } from './types';
 
 // El slug de ?empresa=slug se guarda antes del primer render
@@ -67,6 +68,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     applyFavicon(logoSrc || initialFavicon(tenant.name, tenant.accentColor));
     document.title = tenant.tagline ? `${tenant.name} — ${tenant.tagline}` : tenant.name;
     document.documentElement.lang = tenant.locale?.split('-')[0] || document.documentElement.lang;
+    applyAppManifest(tenant);
   }, [tenant, logoSrc]);
 
   const value = useMemo<TenantContextValue | null>(

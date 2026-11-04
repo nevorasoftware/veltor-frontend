@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Lock, Mail, ArrowRight, AlertCircle, KeyRound } from 'lucide-react';
+import { Lock, Mail, ArrowRight, AlertCircle, KeyRound, Smartphone } from 'lucide-react';
+import { isMobile, isStandalone, openInstallHelp } from '../pwa/install';
 import { useTenant } from '../tenant/TenantContext';
 import { api } from '../api/client';
 import { clearSession, getUser, hasValidSession, homePathFor, saveSession, updateUser, type SessionUser } from '../auth/session';
@@ -238,6 +239,16 @@ export const LoginPage: React.FC = () => {
               <ArrowRight className="w-4 h-4 text-slate-900" />
             </button>
           </form>
+        )}
+
+        {isMobile() && !isStandalone() && (
+          <button
+            type="button"
+            onClick={openInstallHelp}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold bg-slate-800/70 border border-slate-700 text-slate-200 hover:bg-slate-700 cursor-pointer"
+          >
+            <Smartphone className="w-4 h-4 text-brand-accent" /> Instalar la app en este teléfono
+          </button>
         )}
 
         <div className="pt-2 text-center">
