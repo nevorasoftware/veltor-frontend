@@ -30,6 +30,7 @@ import {
   LayoutGrid,
   Building2,
   HardDrive,
+  MessageCircle,
 } from 'lucide-react';
 import { formatMoney, formatDate, todayLocalISO, currencySymbol, currencyCode } from '../utils/format';
 import { useTenant } from '../tenant/TenantContext';
@@ -40,6 +41,7 @@ import { formatDUI, formatNIT, isValidDUI, isValidNIT, compressAndReadFileAsBase
 import { clearSession, getUser, isSuperAdmin } from '../auth/session';
 import { AdminVehiclesTab } from '../components/admin/AdminVehiclesTab';
 import { MyCompanyTab } from '../components/admin/MyCompanyTab';
+import { CustomerOnboardingTab } from '../components/admin/CustomerOnboardingTab';
 import { DelinquencyCard } from '../components/admin/DelinquencyCard';
 import { ListToolbar } from '../components/admin/ListToolbar';
 import type { DelinquencyItem } from '../api/client';
@@ -59,7 +61,7 @@ interface UploadedDocState {
 export const AdminDashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const { sections, isSupport } = useTenant();
-  const [activeTab, setActiveTab] = useState<'overview' | 'leads' | 'loans' | 'vehicles' | 'expenses' | 'settings' | 'company'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'leads' | 'loans' | 'vehicles' | 'expenses' | 'settings' | 'company' | 'onboarding'>('overview');
   const [loadError, setLoadError] = useState<string | null>(null);
   const { data: publicSettings, refetch: refetchSettings } = usePublicSettings();
   const [metrics, setMetrics] = useState<any>(null);
@@ -846,6 +848,7 @@ export const AdminDashboardPage: React.FC = () => {
             { key: 'vehicles', label: 'Vehículos', icon: Car, count: vehicles.length },
             { key: 'expenses', label: 'Control de Gastos', icon: Receipt, count: expenses.length },
             { key: 'settings', label: 'Parámetros y Tasas', icon: Sliders },
+            ...(canEditCompany ? ([{ key: 'onboarding', label: 'Registro de clientes', icon: MessageCircle }] as const) : []),
             ...(canEditCompany ? ([{ key: 'company', label: 'Mi empresa', icon: Building2 }] as const) : []),
           ] as const).map((tab) => {
             const Icon = tab.icon;
@@ -967,6 +970,7 @@ export const AdminDashboardPage: React.FC = () => {
       {activeTab === 'vehicles' && <AdminVehiclesTab vehicles={vehicles} onChanged={loadData} />}
 
       {activeTab === 'company' && canEditCompany && <MyCompanyTab />}
+      {activeTab === 'onboarding' && canEditCompany && <CustomerOnboardingTab />}
 
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">

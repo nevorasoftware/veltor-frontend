@@ -21,6 +21,78 @@ export class ApiError extends Error {
   }
 }
 
+// ---- Registro de clientes
+export type InviteStatus = 'SENT' | 'FAILED' | 'DISABLED' | 'INVALID_PHONE' | 'NOT_SENT' | 'SKIPPED';
+export interface OnboardingCustomer {
+  id: string;
+  code: string;
+  fullName: string;
+  phone: string | null;
+  hasPortalAccess: boolean;
+  missing: string[];
+  validPhone: boolean;
+  lastInvite: null | {
+    sentAt: string;
+    expiresAt: string;
+    sendStatus: string;
+    sendError: string | null;
+    state: 'PENDING' | 'USED' | 'REVOKED' | 'EXPIRED';
+  };
+}
+export interface InviteOutcome {
+  customerId: string;
+  code: string;
+  fullName: string;
+  phone: string | null;
+  status: InviteStatus;
+  reason?: string;
+  url?: string;
+  expiresAt?: string;
+}
+export interface BulkInviteResult {
+  dryRun: boolean;
+  summary: { total: number; sent: number; failed: number; skipped: number; wouldSend: number };
+  results: InviteOutcome[];
+}
+export interface RegistrationInfo {
+  company: {
+    name: string;
+    slug: string;
+    tagline: string | null;
+    primaryColor: string;
+    secondaryColor: string;
+    accentColor: string;
+    hasLogo: boolean;
+    logoVersion: number;
+    contactPhone: string | null;
+    contactEmail: string | null;
+  };
+  customer: {
+    fullName: string;
+    phoneMasked: string | null;
+    personType: string;
+    email: string | null;
+    address: string | null;
+    municipality: string | null;
+    department: string | null;
+  };
+  expiresAt: string;
+}
+export interface RegistrationPayload {
+  dui: string;
+  nit?: string;
+  email: string;
+  birthDate?: string;
+  address: string;
+  municipality: string;
+  department: string;
+  economicActivity?: string;
+  employerName?: string;
+  monthlyIncome?: number;
+  password: string;
+  privacyAccepted: boolean;
+}
+
 export type LateFeeType = 'NONE' | 'PER_DAY' | 'PER_INSTALLMENT';
 
 /** Parámetros de cobranza: recordatorios, gracia, día de pago y mora */
@@ -171,6 +243,19 @@ export const api = {
   getCustomer: (id: string) => request<any>(`/customers/${id}`),
   createCustomer: (payload: any) => request<any>('/customers', json('POST', payload)),
   grantPortalAccess: (customerId: string) => request<any>(`/customers/${customerId}/portal-access`, json('POST')),
+
+  // Registro de clientes por enlace (WhatsApp)
+  getOnboardingCustomers: () => request<OnboardingCustomer[]>('/onboarding/customers'),
+  sendCustomerInvite: (customerId: string, send = true) =>
+    request<InviteOutcome>(`/onboarding/customers/${customerId}/invite`, json('POST', { send })),
+  sendBulkInvites: (dryRun: boolean, resend = false) =>
+    request<BulkInviteResult>('/onboarding/invites/bulk', json('POST', { dryRun, resend })),
+  getRegistration: (token: string) => request<RegistrationInfo>(`/public/registro/${encodeURIComponent(token)}`),
+  completeRegistration: (token: string, payload: RegistrationPayload) =>
+    request<{ success: boolean; email: string; message: string }>(
+      `/public/registro/${encodeURIComponent(token)}`,
+      json('POST', payload),
+    ),
 
   // Finanzas y Pagos
   getLoanLedger: (loanId: string, asOfDate?: string) =>

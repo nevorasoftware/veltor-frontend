@@ -11,6 +11,7 @@ import { ForgotPasswordPage, ResetPasswordPage } from './pages/PasswordRecoveryP
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { ClientPortalPage } from './pages/ClientPortalPage';
 import { PlatformPage } from './pages/PlatformPage';
+import { RegistrationPage } from './pages/RegistrationPage';
 import { RequireAuth } from './auth/RequireAuth';
 import { TenantProvider } from './tenant/TenantProvider';
 
@@ -38,6 +39,7 @@ export const App: React.FC = () => {
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/recuperar" element={<ForgotPasswordPage />} />
                 <Route path="/restablecer" element={<ResetPasswordPage />} />
+                <Route path="/registro/:token" element={<RegistrationPage />} />
                 <Route
                   path="/admin"
                   element={
