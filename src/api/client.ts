@@ -93,6 +93,12 @@ export interface RegistrationPayload {
   privacyAccepted: boolean;
 }
 
+export interface ReceiptSendResult {
+  paymentCode: string;
+  email?: { status: 'SENT' | 'SKIPPED' | 'FAILED' | 'NO_RECIPIENT'; to: string | null; error?: string };
+  whatsapp?: { status: 'SENT' | 'FAILED' | 'DISABLED' | 'INVALID_PHONE'; to: string | null; error?: string };
+}
+
 export type LateFeeType = 'NONE' | 'PER_DAY' | 'PER_INSTALLMENT';
 
 /** Parámetros de cobranza: recordatorios, gracia, día de pago y mora */
@@ -269,6 +275,10 @@ export const api = {
   // Documentos PDF oficiales (requieren sesión)
   openLoanSchedulePdf: (loanId: string) => openProtectedFile(`/finance/loans/${loanId}/schedule.pdf`),
   openLoanStatementPdf: (loanId: string) => openProtectedFile(`/finance/loans/${loanId}/statement.pdf`),
+  openPaymentReceiptPdf: (loanId: string, paymentId: string) =>
+    openProtectedFile(`/finance/loans/${loanId}/payments/${paymentId}/receipt.pdf`),
+  sendPaymentReceipt: (loanId: string, paymentId: string, channels: { email: boolean; whatsapp: boolean }) =>
+    request<ReceiptSendResult>(`/finance/loans/${loanId}/payments/${paymentId}/receipt/send`, json('POST', channels)),
   emailLoanStatement: (loanId: string, to?: string) =>
     request<{ status: string; to: string }>(`/finance/loans/${loanId}/statement/email`, json('POST', to ? { to } : {})),
 

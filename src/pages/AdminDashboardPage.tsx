@@ -31,6 +31,7 @@ import {
   Building2,
   HardDrive,
   MessageCircle,
+  History,
 } from 'lucide-react';
 import { formatMoney, formatDate, todayLocalISO, currencySymbol, currencyCode } from '../utils/format';
 import { useTenant } from '../tenant/TenantContext';
@@ -42,6 +43,7 @@ import { clearSession, getUser, isSuperAdmin } from '../auth/session';
 import { AdminVehiclesTab } from '../components/admin/AdminVehiclesTab';
 import { MyCompanyTab } from '../components/admin/MyCompanyTab';
 import { CustomerOnboardingTab } from '../components/admin/CustomerOnboardingTab';
+import { PaymentHistoryModal } from '../components/admin/PaymentHistoryModal';
 import { DelinquencyCard } from '../components/admin/DelinquencyCard';
 import { ListToolbar } from '../components/admin/ListToolbar';
 import type { DelinquencyItem } from '../api/client';
@@ -98,6 +100,8 @@ export const AdminDashboardPage: React.FC = () => {
   // Modal para registro de pago
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedLoan, setSelectedLoan] = useState<any>(null);
+  // Historial de pagos con comprobantes (reenvío a demanda)
+  const [historyLoan, setHistoryLoan] = useState<any>(null);
   const [archivingLoanId, setArchivingLoanId] = useState<string | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState<string>(todayLocalISO());
@@ -1332,6 +1336,14 @@ export const AdminDashboardPage: React.FC = () => {
                   >
                     <FileText className="w-3.5 h-3.5 text-slate-300" />
                     <span>Amortización PDF</span>
+                  </button>
+                  <button
+                    onClick={() => setHistoryLoan(ln)}
+                    className="w-full sm:w-auto p-2.5 rounded-xl bg-slate-700/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-colors flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer"
+                    title="Ver los pagos del crédito y reenviar el comprobante de cada uno"
+                  >
+                    <History className="w-3.5 h-3.5 text-sky-300" />
+                    <span>Historial de pagos</span>
                   </button>
                   <button
                     onClick={() => openPdf('statement', ln.id)}
@@ -2877,6 +2889,8 @@ export const AdminDashboardPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {historyLoan && <PaymentHistoryModal loan={historyLoan} onClose={() => setHistoryLoan(null)} />}
 
       {/* Modal de Registro de Pago / Abono Extraordinario */}
       {paymentModalOpen && selectedLoan && (
