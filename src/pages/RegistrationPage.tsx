@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { AlertCircle, ArrowRight, CheckCircle2, Loader2, ShieldCheck } from 'lucide-react';
-import { api, type RegistrationInfo, type RegistrationPayload } from '../api/client';
+import { AlertCircle, ArrowRight, Camera, CheckCircle2, Loader2, ShieldCheck } from 'lucide-react';
+import { api, type RegistrationFiles, type RegistrationInfo, type RegistrationPayload } from '../api/client';
 import { API_URL } from '../config/branding';
 import { TenantLogo } from '../components/TenantLogo';
 import { brandCssVars } from '../tenant/theme';
@@ -20,6 +20,27 @@ const formatDui = (v: string) => {
   const d = v.replace(/\D/g, '').slice(0, 9);
   return d.length > 8 ? `${d.slice(0, 8)}-${d.slice(8)}` : d;
 };
+
+/** Mismo límite y tipos que el backend (documents.constants) */
+const MAX_FILE_MB = 10;
+const FILE_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
+const PHOTOS: { key: keyof RegistrationFiles; label: string }[] = [
+  { key: 'duiFront', label: 'DUI (frente)' },
+  { key: 'duiBack', label: 'DUI (reverso)' },
+  { key: 'license', label: 'Licencia de conducir' },
+];
+
+const PhotoInput: React.FC<{ id: string; label: string; file?: File; onChange: (f?: File) => void }> = ({ id, label, file, onChange }) => (
+  <label htmlFor={id}
+    className={`flex items-center gap-3 px-3.5 py-3 rounded-xl border border-dashed cursor-pointer transition-colors ${file ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-slate-600 bg-slate-800/60 hover:border-slate-400'}`}>
+    {file ? <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" /> : <Camera className="w-5 h-5 shrink-0 text-slate-400" />}
+    <span className="min-w-0">
+      <span className="block text-xs font-semibold text-slate-200">{label}</span>
+      <span className="block text-[11px] text-slate-500 truncate">{file ? file.name : 'Tomar foto o elegir archivo'}</span>
+    </span>
+    <input id={id} type="file" accept={FILE_ACCEPT} className="sr-only" onChange={(e) => onChange(e.target.files?.[0])} />
+  </label>
+);
 
 const Field: React.FC<{ label: string; htmlFor: string; hint?: string; optional?: boolean; children: React.ReactNode }> = ({
   label, htmlFor, hint, optional, children,
@@ -62,6 +83,7 @@ export const RegistrationPage: React.FC = () => {
     dui: '', nit: '', email: '', birthDate: '', address: '', municipality: '', department: 'San Salvador',
     economicActivity: '', employerName: '', monthlyIncome: '', password: '', confirm: '', privacyAccepted: false,
   });
+  const [photos, setPhotos] = useState<Partial<RegistrationFiles>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [doneEmail, setDoneEmail] = useState<string | null>(null);
@@ -93,6 +115,10 @@ export const RegistrationPage: React.FC = () => {
     e.preventDefault();
     setError(null);
     if (!/^\d{8}-\d$/.test(form.dui)) return setError('El DUI debe tener el formato 00000000-0.');
+    const missingPhotos = PHOTOS.filter((p) => !photos[p.key]).map((p) => p.label);
+    if (missingPhotos.length) return setError(`Adjunte la foto de: ${missingPhotos.join(', ')}.`);
+    const big = PHOTOS.find((p) => photos[p.key]!.size > MAX_FILE_MB * 1024 * 1024);
+    if (big) return setError(`${big.label}: el archivo pesa más de ${MAX_FILE_MB} MB.`);
     if (form.password.length < PASSWORD_MIN_LENGTH) return setError(`La contraseña debe tener al menos ${PASSWORD_MIN_LENGTH} caracteres.`);
     if (form.password !== form.confirm) return setError('Las contraseñas no coinciden.');
     if (!form.privacyAccepted) return setError('Debe aceptar el aviso de privacidad para continuar.');
@@ -112,7 +138,7 @@ export const RegistrationPage: React.FC = () => {
     };
     setSaving(true);
     try {
-      const r = await api.completeRegistration(token, payload);
+      const r = await api.completeRegistration(token, payload, photos as RegistrationFiles);
       setDoneEmail(r.email);
     } catch (err: any) {
       setError(err.message || 'No se pudo guardar. Intente de nuevo.');
@@ -199,6 +225,17 @@ export const RegistrationPage: React.FC = () => {
                     <Field label="Teléfono" htmlFor="rg-phone" hint="Si cambió de número, avísenos por WhatsApp.">
                       <input id="rg-phone" disabled value={info.customer.phoneMasked ?? '—'} className={`${inputClass} opacity-60`} />
                     </Field>
+                  </div>
+                </fieldset>
+
+                <fieldset className="space-y-3">
+                  <legend className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1">Documentos</legend>
+                  <p className="text-[11px] text-slate-500">Fotos claras y legibles del DUI (ambos lados) y de la licencia de conducir. Son obligatorias.</p>
+                  <div className="grid sm:grid-cols-3 gap-3">
+                    {PHOTOS.map((p) => (
+                      <PhotoInput key={p.key} id={`rg-${p.key}`} label={p.label} file={photos[p.key]}
+                        onChange={(f) => setPhotos((s) => ({ ...s, [p.key]: f }))} />
+                    ))}
                   </div>
                 </fieldset>
 

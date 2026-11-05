@@ -92,6 +92,12 @@ export interface RegistrationPayload {
   password: string;
   privacyAccepted: boolean;
 }
+/** Fotos obligatorias del registro (campos multipart) */
+export interface RegistrationFiles {
+  duiFront: File;
+  duiBack: File;
+  license: File;
+}
 
 export interface ReceiptSendResult {
   paymentCode: string;
@@ -257,11 +263,14 @@ export const api = {
   sendBulkInvites: (dryRun: boolean, resend = false) =>
     request<BulkInviteResult>('/onboarding/invites/bulk', json('POST', { dryRun, resend })),
   getRegistration: (token: string) => request<RegistrationInfo>(`/public/registro/${encodeURIComponent(token)}`),
-  completeRegistration: (token: string, payload: RegistrationPayload) =>
-    request<{ success: boolean; email: string; message: string }>(
-      `/public/registro/${encodeURIComponent(token)}`,
-      json('POST', payload),
-    ),
+  completeRegistration: async (token: string, payload: RegistrationPayload, files: RegistrationFiles) => {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(payload)) if (v !== undefined && v !== null) fd.append(k, String(v));
+    for (const [k, f] of Object.entries(files)) fd.append(k, f);
+    const res = await fetch(`${API_BASE}/public/registro/${encodeURIComponent(token)}`, { method: 'POST', body: fd });
+    if (!res.ok) throw new ApiError(await parseError(res), res.status);
+    return (await res.json()) as { success: boolean; email: string; message: string };
+  },
 
   // Finanzas y Pagos
   getLoanLedger: (loanId: string, asOfDate?: string) =>
