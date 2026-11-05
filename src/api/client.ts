@@ -92,6 +92,45 @@ export interface RegistrationPayload {
   password: string;
   privacyAccepted: boolean;
 }
+/** Rehacer crédito / actualizar condiciones (lo no enviado se conserva) */
+export interface RestateLoanPayload {
+  reason: string;
+  vehiclePrice?: number;
+  principal?: number;
+  annualRate?: number;
+  termMonths?: number;
+  firstPaymentDate?: string;
+  disbursementDate?: string;
+  insuranceMonthly?: number | null;
+  payments?: 'KEEP' | 'REVERSE_ALL';
+  markPaidThrough?: number;
+  dryRun?: boolean;
+}
+interface RestateTerms {
+  vehiclePrice: number;
+  downPayment: number;
+  principal: number;
+  annualRate: number;
+  termMonths: number;
+  disbursementDate: string;
+  firstPaymentDate: string;
+  insuranceMonthly: number | null;
+  installment: number;
+}
+export interface RestateLoanResult {
+  dryRun?: boolean;
+  success?: boolean;
+  message?: string;
+  loan: { id: string; code: string };
+  before: RestateTerms & { activePayments: number; principalBalance: number };
+  after: RestateTerms & { lastDueDate: string | null };
+  paymentsToReverse: { id: string; code: string; date: string; amount: number }[];
+  paymentsKept: number;
+  paidInstallmentsWithKeptPayments: number;
+  paymentsToRegister: { number: number; dueDate: string; amount: string }[];
+  registeredPayments?: string[];
+  result?: { principalBalance: string; paidInstallments: number; next: { number: number; dueDate: string } | null };
+}
 /** Fotos obligatorias del registro (campos multipart) */
 export interface RegistrationFiles {
   duiFront: File;
@@ -280,6 +319,8 @@ export const api = {
   registerPayment: (payload: any) => request<any>('/finance/payments', json('POST', payload)),
   reversePayment: (paymentId: string, reason: string) =>
     request<any>(`/finance/payments/${paymentId}/reverse`, json('POST', { reason })),
+  restateLoan: (loanId: string, payload: RestateLoanPayload) =>
+    request<RestateLoanResult>(`/finance/loans/${loanId}/restate`, json('POST', payload)),
 
   // Documentos PDF oficiales (requieren sesión)
   openLoanSchedulePdf: (loanId: string) => openProtectedFile(`/finance/loans/${loanId}/schedule.pdf`),

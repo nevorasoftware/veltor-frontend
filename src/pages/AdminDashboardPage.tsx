@@ -32,6 +32,7 @@ import {
   HardDrive,
   MessageCircle,
   History,
+  RefreshCcw,
 } from 'lucide-react';
 import { formatMoney, formatDate, todayLocalISO, currencySymbol, currencyCode } from '../utils/format';
 import { useTenant } from '../tenant/TenantContext';
@@ -44,6 +45,7 @@ import { AdminVehiclesTab } from '../components/admin/AdminVehiclesTab';
 import { MyCompanyTab } from '../components/admin/MyCompanyTab';
 import { CustomerOnboardingTab } from '../components/admin/CustomerOnboardingTab';
 import { PaymentHistoryModal } from '../components/admin/PaymentHistoryModal';
+import { RestateLoanModal } from '../components/admin/RestateLoanModal';
 import { DelinquencyCard } from '../components/admin/DelinquencyCard';
 import { ListToolbar } from '../components/admin/ListToolbar';
 import type { DelinquencyItem } from '../api/client';
@@ -102,6 +104,8 @@ export const AdminDashboardPage: React.FC = () => {
   const [selectedLoan, setSelectedLoan] = useState<any>(null);
   // Historial de pagos con comprobantes (reenvío a demanda)
   const [historyLoan, setHistoryLoan] = useState<any>(null);
+  // Rehacer crédito / actualizar condiciones (solo ADMIN)
+  const [restateLoan, setRestateLoan] = useState<any>(null);
   const [archivingLoanId, setArchivingLoanId] = useState<string | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState<string>(todayLocalISO());
@@ -1345,6 +1349,16 @@ export const AdminDashboardPage: React.FC = () => {
                     <History className="w-3.5 h-3.5 text-sky-300" />
                     <span>Historial de pagos</span>
                   </button>
+                  {user?.role === 'ADMIN' && ln.status === 'ACTIVE' && (
+                    <button
+                      onClick={() => setRestateLoan(ln)}
+                      className="w-full sm:w-auto p-2.5 rounded-xl bg-slate-700/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-colors flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer"
+                      title="Corregir monto, tasa, plazo, fechas o seguro y regenerar el plan de pagos"
+                    >
+                      <RefreshCcw className="w-3.5 h-3.5 text-amber-300" />
+                      <span>Rehacer / condiciones</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => openPdf('statement', ln.id)}
                     className="w-full sm:w-auto p-2.5 rounded-xl bg-slate-700/80 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-colors flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer"
@@ -2891,6 +2905,7 @@ export const AdminDashboardPage: React.FC = () => {
       )}
 
       {historyLoan && <PaymentHistoryModal loan={historyLoan} onClose={() => setHistoryLoan(null)} />}
+      {restateLoan && <RestateLoanModal loan={restateLoan} onClose={() => setRestateLoan(null)} onDone={() => loadData()} />}
 
       {/* Modal de Registro de Pago / Abono Extraordinario */}
       {paymentModalOpen && selectedLoan && (
