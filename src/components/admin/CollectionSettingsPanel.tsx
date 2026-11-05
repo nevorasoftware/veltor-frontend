@@ -81,7 +81,7 @@ export const CollectionSettingsPanel: React.FC = () => {
   }
 
   const example = (() => {
-    const day = form.defaultPaymentDay ?? 10;
+    const day = 10;
     const reminder = day - form.reminderDaysBefore;
     const moraFrom = day + form.graceDays + 1;
     return `Ej.: cuota que vence el ${day}: recordatorio el día ${reminder >= 1 ? reminder : `${form.reminderDaysBefore} días antes`}, gracia hasta el ${day + form.graceDays} y mora desde el ${moraFrom} (${LATE_FEE_LABELS.PER_DAY.toLowerCase()}: ${formatMoney(form.lateFeePerDayAmount)} × día; cuota de mora: ${formatMoney(form.lateFeePerInstallmentAmount)}).`;
@@ -97,8 +97,8 @@ export const CollectionSettingsPanel: React.FC = () => {
           </h4>
           <p className="text-xs text-slate-400 mt-1">
             Cada día a las 8:00 el sistema revisa los créditos activos: envía el recordatorio de pago antes del vencimiento y,
-            al terminar los días de gracia, el aviso de cuota vencida con el saldo de la cuota y la mora acumulada. El día de
-            pago y la mora se fijan en cada crédito al formalizarlo; aquí se definen los valores sugeridos.
+            al terminar los días de gracia, el aviso de cuota vencida con el saldo de la cuota y la mora acumulada. Cada crédito
+            vence el mismo día del mes en que se apertura; la mora se fija al formalizarlo y aquí se definen los valores sugeridos.
           </p>
         </div>
 
@@ -125,16 +125,8 @@ export const CollectionSettingsPanel: React.FC = () => {
           <Field label="Repetir aviso de mora cada" hint="Días; 0 = enviar el aviso una sola vez">
             <input type="number" min={0} max={30} value={form.overdueReminderEveryDays} onChange={(e) => set('overdueReminderEveryDays', num(e.target.value))} className={inputClass} />
           </Field>
-          <Field label="Día de pago sugerido" hint="1 a 28; vacío = mismo día del desembolso">
-            <input
-              type="number"
-              min={1}
-              max={28}
-              value={form.defaultPaymentDay ?? ''}
-              onChange={(e) => set('defaultPaymentDay', e.target.value === '' ? null : Number(e.target.value))}
-              placeholder="Ej. 10"
-              className={inputClass}
-            />
+          <Field label="Día de pago" hint="Cada crédito vence el mismo día del mes en que se apertura">
+            <input disabled value="Día de apertura de cada crédito" className={`${inputClass} opacity-60`} />
           </Field>
           <Field label={`Mora por día de atraso (${currencyCode()})`}>
             <input type="number" min={0} step="0.01" value={form.lateFeePerDayAmount} onChange={(e) => set('lateFeePerDayAmount', num(e.target.value))} className={inputClass} />

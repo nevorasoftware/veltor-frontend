@@ -570,7 +570,7 @@ export const AdminDashboardPage: React.FC = () => {
     setLeadVehicleId(lead.vehicleId || lead.vehicle?.id || '');
     setLeadMonthlyRate(adminMonthlyRate);
     const feeType = collectionSettings?.defaultLateFeeType ?? 'PER_DAY';
-    setLeadPaymentDay(collectionSettings?.defaultPaymentDay ?? '');
+    setLeadPaymentDay(''); // por defecto: el día en que se apertura el crédito
     setLeadLateFeeType(feeType);
     setLeadLateFeeAmount(lateFeeDefaultAmount(feeType));
     setLeadDui('');
@@ -720,7 +720,8 @@ export const AdminDashboardPage: React.FC = () => {
     const pct = (v: number | null | undefined) => (v != null ? Number((v * 100).toFixed(4)) : null);
     const min = pct(publicSettings?.minMonthlyRate) ?? 0;
     const official = pct(publicSettings?.preferentialMonthlyRate) ?? 0;
-    const max = pct(publicSettings?.maxMonthlyRate) ?? Math.max(min, official * 2);
+    // El tope nunca es menor a 4 % mensual
+    const max = Math.max(pct(publicSettings?.maxMonthlyRate) ?? Math.max(min, official * 2), 4);
     return { min, max };
   }, [publicSettings?.minMonthlyRate, publicSettings?.maxMonthlyRate, publicSettings?.preferentialMonthlyRate]);
 
@@ -2353,7 +2354,7 @@ export const AdminDashboardPage: React.FC = () => {
                             min="1"
                             max="28"
                             value={leadPaymentDay}
-                            placeholder={`Mismo día del desembolso (${Number(todayLocalISO().slice(8, 10))})`}
+                            placeholder={`Día de apertura (${Number(todayLocalISO().slice(8, 10))})`}
                             onChange={(e) =>
                               setLeadPaymentDay(e.target.value === '' ? '' : Math.min(28, Math.max(1, Number(e.target.value))))
                             }
