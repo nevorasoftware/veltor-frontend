@@ -107,8 +107,16 @@ export const Footer: React.FC = () => {
             © {new Date().getFullYear()} {tenant.legalName || tenant.name}
           </p>
           <p className="text-[11px] max-w-xl text-center md:text-right">
-            Las solicitudes de financiamiento están sujetas a evaluación y condiciones contractuales. Desarrollado por
-            Nevora Software.
+            Las solicitudes de financiamiento están sujetas a evaluación y condiciones contractuales. Desarrollado por{' '}
+            <a
+              href="https://nevorasoftware.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:text-white transition-colors"
+            >
+              Nevora Software
+            </a>
+            .
           </p>
         </div>
       </div>
