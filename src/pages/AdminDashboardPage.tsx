@@ -32,6 +32,7 @@ import {
   HardDrive,
   MessageCircle,
   History,
+  MessagesSquare,
   RefreshCcw,
 } from 'lucide-react';
 import { formatMoney, formatDate, todayLocalISO, currencySymbol, currencyCode } from '../utils/format';
@@ -44,6 +45,7 @@ import { clearSession, getUser, isSuperAdmin } from '../auth/session';
 import { AdminVehiclesTab } from '../components/admin/AdminVehiclesTab';
 import { MyCompanyTab } from '../components/admin/MyCompanyTab';
 import { CustomerOnboardingTab } from '../components/admin/CustomerOnboardingTab';
+import { WhatsappInboxTab } from '../components/admin/WhatsappInboxTab';
 import { PaymentHistoryModal } from '../components/admin/PaymentHistoryModal';
 import { RestateLoanModal } from '../components/admin/RestateLoanModal';
 import { DelinquencyCard } from '../components/admin/DelinquencyCard';
@@ -65,7 +67,7 @@ interface UploadedDocState {
 export const AdminDashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const { sections, isSupport } = useTenant();
-  const [activeTab, setActiveTab] = useState<'overview' | 'leads' | 'loans' | 'vehicles' | 'expenses' | 'settings' | 'company' | 'onboarding'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'leads' | 'loans' | 'vehicles' | 'expenses' | 'settings' | 'company' | 'onboarding' | 'messages'>('overview');
   const [loadError, setLoadError] = useState<string | null>(null);
   const { data: publicSettings, refetch: refetchSettings } = usePublicSettings();
   const [metrics, setMetrics] = useState<any>(null);
@@ -75,6 +77,9 @@ export const AdminDashboardPage: React.FC = () => {
 
   // Mora a la fecha (la calcula el backend con el ledger)
   const delinquencyQuery = useQuery({ queryKey: ['delinquency'], queryFn: () => api.getDelinquencySummary() });
+  // Mensajes de WhatsApp sin leer (personal que atiende clientes)
+  const canSeeMessages = ['ADMIN', 'CASHIER', 'COLLECTIONS_AGENT'].includes(getUser()?.role ?? '');
+  const waUnread = useQuery({ queryKey: ['wa-unread'], queryFn: api.getWhatsappUnread, enabled: canSeeMessages, refetchInterval: 30_000 });
   const arrearsByLoan = useMemo(() => {
     const map = new Map<string, DelinquencyItem>();
     (delinquencyQuery.data?.loans || []).forEach((it) => map.set(it.loanId, it));
@@ -857,6 +862,7 @@ export const AdminDashboardPage: React.FC = () => {
             { key: 'vehicles', label: 'Vehículos', icon: Car, count: vehicles.length },
             { key: 'expenses', label: 'Control de Gastos', icon: Receipt, count: expenses.length },
             { key: 'settings', label: 'Parámetros y Tasas', icon: Sliders },
+            ...(canSeeMessages ? ([{ key: 'messages', label: 'Mensajes', icon: MessagesSquare, count: waUnread.data?.unread ?? 0 }] as const) : []),
             ...(canEditCompany ? ([{ key: 'onboarding', label: 'Registro de clientes', icon: MessageCircle }] as const) : []),
             ...(canEditCompany ? ([{ key: 'company', label: 'Mi empresa', icon: Building2 }] as const) : []),
           ] as const).map((tab) => {
@@ -980,6 +986,7 @@ export const AdminDashboardPage: React.FC = () => {
 
       {activeTab === 'company' && canEditCompany && <MyCompanyTab />}
       {activeTab === 'onboarding' && canEditCompany && <CustomerOnboardingTab />}
+      {activeTab === 'messages' && canSeeMessages && <WhatsappInboxTab />}
 
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">

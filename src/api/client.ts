@@ -92,6 +92,37 @@ export interface RegistrationPayload {
   password: string;
   privacyAccepted: boolean;
 }
+export interface WaMessage {
+  id: string;
+  direction: 'IN' | 'OUT';
+  type: string;
+  body: string | null;
+  mediaId: string | null;
+  mediaMime: string | null;
+  mediaName: string | null;
+  documentId: string | null;
+  status: string;
+  error: string | null;
+  timestamp: string;
+  profileName: string | null;
+}
+export interface WaConversation {
+  phone: string;
+  customer: { id: string; code: string; fullName: string } | null;
+  profileName: string | null;
+  last: { direction: 'IN' | 'OUT'; type: string; body: string | null; at: string };
+  unread: number;
+  lastIncomingAt: string | null;
+  canReply: boolean;
+  replyUntil: string | null;
+}
+export interface WaThread {
+  phone: string;
+  customer: { id: string; code: string; fullName: string } | null;
+  messages: WaMessage[];
+  canReply: boolean;
+  replyUntil: string | null;
+}
 /** Rehacer crédito / actualizar condiciones (lo no enviado se conserva) */
 export interface RestateLoanPayload {
   reason: string;
@@ -297,6 +328,18 @@ export const api = {
 
   // Registro de clientes por enlace (WhatsApp)
   getOnboardingCustomers: () => request<OnboardingCustomer[]>('/onboarding/customers'),
+  // Bandeja de WhatsApp
+  getWhatsappConversations: () => request<WaConversation[]>('/whatsapp/inbox'),
+  getWhatsappUnread: () => request<{ unread: number }>('/whatsapp/inbox/unread'),
+  getWhatsappThread: (phone: string) => request<WaThread>(`/whatsapp/inbox/${encodeURIComponent(phone)}`),
+  replyWhatsapp: (phone: string, text: string) =>
+    request<{ success: boolean }>(`/whatsapp/inbox/${encodeURIComponent(phone)}/reply`, json('POST', { text })),
+  /** Adjunto de un mensaje como URL local (blob) para mostrarlo o abrirlo */
+  getWhatsappMediaUrl: async (messageId: string) => {
+    const res = await fetch(`${API_BASE}/whatsapp/inbox/messages/${messageId}/media`, { headers: authHeaders() });
+    if (!res.ok) throw new ApiError(await parseError(res), res.status);
+    return URL.createObjectURL(await res.blob());
+  },
   sendCustomerInvite: (customerId: string, send = true) =>
     request<InviteOutcome>(`/onboarding/customers/${customerId}/invite`, json('POST', { send })),
   sendBulkInvites: (dryRun: boolean, resend = false) =>
