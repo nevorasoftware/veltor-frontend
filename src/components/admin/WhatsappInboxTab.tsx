@@ -88,7 +88,10 @@ export const WhatsappInboxTab: React.FC = () => {
       qc.invalidateQueries({ queryKey: ['wa-unread'] });
     }
   }, [thread.data?.messages.length, selected]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => bottom.current?.scrollIntoView({ block: 'end' }), [thread.data?.messages.length, selected]);
+  // Con llaves: en Chrome reciente scrollIntoView() devuelve una Promesa y React la tomaría como limpieza del efecto
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ block: 'end' });
+  }, [thread.data?.messages.length, selected]);
 
   const list = useMemo(() => {
     const t = q.trim().toLowerCase();
