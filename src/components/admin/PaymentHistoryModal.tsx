@@ -108,7 +108,12 @@ export const PaymentHistoryModal: React.FC<{ loan: any; onClose: () => void }> =
                         </div>
                       </td>
                       <td className="py-2.5 pr-3 text-slate-200 font-mono text-xs">{coveredInstallments(p)}</td>
-                      <td className="py-2.5 pr-3 text-right font-mono font-bold text-white">{formatMoney(p.amountReceived)}</td>
+                      <td className="py-2.5 pr-3 text-right font-mono font-bold text-white">
+                        {formatMoney(p.amountReceived)}
+                        {Number(p.insuranceAmount ?? 0) > 0 && (
+                          <div className="text-[11px] font-normal text-slate-400">+ seguro {formatMoney(p.insuranceAmount)}</div>
+                        )}
+                      </td>
                       <td className="py-2.5 text-right">
                         <div className="inline-flex flex-wrap justify-end gap-1.5">
                           <button onClick={() => openPdf(p)} className={`${btn} bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700`} title="Ver o descargar el comprobante en PDF">

@@ -36,7 +36,7 @@ export const DelinquencyCard: React.FC<DelinquencyCardProps> = ({ data, isLoadin
           <div className="min-w-0">
             <h3 className="text-base font-bold text-white">Créditos en mora</h3>
             <p className="text-[11px] text-slate-400">
-              Cuotas vencidas, seguro y mora calculada al {data?.asOf ? formatDate(data.asOf) : 'día de hoy'}
+              Cuotas vencidas y mora calculada al {data?.asOf ? formatDate(data.asOf) : 'día de hoy'}
             </p>
           </div>
         </div>
@@ -70,7 +70,7 @@ export const DelinquencyCard: React.FC<DelinquencyCardProps> = ({ data, isLoadin
 
       {totals && alert && (
         <p className="text-[11px] text-slate-400">
-          Cuotas {formatMoney(totals.overduePrincipalInterest)} · Seguro {formatMoney(totals.overdueInsurance)} · Mora{' '}
+          Cuotas {formatMoney(totals.overduePrincipalInterest)} · Mora{' '}
           {formatMoney(totals.lateFees)}
         </p>
       )}

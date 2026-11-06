@@ -116,6 +116,9 @@ export const AdminDashboardPage: React.FC = () => {
   const [paymentDate, setPaymentDate] = useState<string>(todayLocalISO());
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'BANK_TRANSFER' | 'BANK_DEPOSIT' | 'CHECK' | 'OTHER'>('BANK_TRANSFER');
   const [paymentReference, setPaymentReference] = useState('');
+  // Seguro: se cobra aparte, no forma parte del crédito (solo se informa en el comprobante)
+  const [paymentInsurancePaid, setPaymentInsurancePaid] = useState(false);
+  const [paymentInsuranceAmount, setPaymentInsuranceAmount] = useState('');
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState('');
@@ -128,7 +131,7 @@ export const AdminDashboardPage: React.FC = () => {
     daysOverdue: number;
   } | null>(null);
   const [payoffTotal, setPayoffTotal] = useState<string | null>(null);
-  /** Exigible a hoy del crédito (cuotas vencidas + seguro + mora), según GET /reports/delinquency. */
+  /** Exigible a hoy del crédito (cuotas vencidas + mora), según GET /reports/delinquency. El seguro no forma parte del crédito. */
   const [paymentArrears, setPaymentArrears] = useState<DelinquencyItem | null>(null);
 
   // Acceso al portal del cliente
@@ -483,6 +486,8 @@ export const AdminDashboardPage: React.FC = () => {
     setPaymentDate(todayLocalISO());
     setPaymentMethod('BANK_TRANSFER');
     setPaymentReference('');
+    setPaymentInsurancePaid(false);
+    setPaymentInsuranceAmount(Number(loan.insuranceMonthly ?? 0) > 0 ? Number(loan.insuranceMonthly).toFixed(2) : '');
     setPaymentError(null);
     setPaymentSuccessMsg(null);
     setNextInstallmentInfo(null);
@@ -519,7 +524,13 @@ export const AdminDashboardPage: React.FC = () => {
   const handleRegisterPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedLoan) return;
-    if (!(Number(paymentAmount) > 0)) {
+    const insurance = paymentInsurancePaid ? Number(paymentInsuranceAmount) : 0;
+    if (paymentInsurancePaid && !(insurance > 0)) {
+      setPaymentError('Ingrese el monto del seguro pagado o desmarque la opción.');
+      return;
+    }
+    const amount = Number(paymentAmount) || 0;
+    if (amount < 0 || (!(amount > 0) && !(paymentKind === 'INSTALLMENT' && insurance > 0))) {
       setPaymentError('Ingrese un monto mayor a cero.');
       return;
     }
@@ -529,7 +540,8 @@ export const AdminDashboardPage: React.FC = () => {
     try {
       const res = await api.registerPayment({
         loanId: selectedLoan.id,
-        amount: Number(paymentAmount).toFixed(2),
+        amount: amount.toFixed(2),
+        insuranceAmount: insurance > 0 ? insurance.toFixed(2) : undefined,
         effectiveDate: paymentDate,
         kind: paymentKind,
         policy: paymentKind === 'PRINCIPAL_PREPAYMENT' ? prepayPolicy : undefined,
@@ -541,7 +553,7 @@ export const AdminDashboardPage: React.FC = () => {
       setPaymentSuccessMsg(
         res.isDuplicate
           ? 'Este pago ya había sido registrado.'
-          : `Pago ${res.payment?.code} aplicado. Nuevo saldo de capital: ${formatMoney(res.newPrincipalBalance)}`,
+          : `Pago ${res.payment?.code} aplicado${insurance > 0 ? ` (seguro ${formatMoney(insurance)} registrado aparte)` : ''}. Nuevo saldo de capital: ${formatMoney(res.newPrincipalBalance)}`,
       );
       loadData();
       setTimeout(() => {
@@ -2999,16 +3011,50 @@ export const AdminDashboardPage: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Monto Recibido en {currencyCode()} *
+                    Monto al crédito en {currencyCode()} *
                   </label>
                   <input
                     type="number"
                     step="0.01"
-                    required
+                    required={!paymentInsurancePaid}
+                    min="0"
                     value={paymentAmount}
                     onChange={(e) => setPaymentAmount(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-base font-mono text-white focus:outline-none focus:border-slate-400"
                   />
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-slate-800/80 border border-slate-700 space-y-2.5">
+                  <label className="flex items-center justify-between gap-3 cursor-pointer">
+                    <span className="text-xs font-semibold text-slate-200">¿El cliente pagó seguro?</span>
+                    <input
+                      type="checkbox"
+                      checked={paymentInsurancePaid}
+                      onChange={(e) => setPaymentInsurancePaid(e.target.checked)}
+                      className="w-4 h-4 accent-emerald-500 cursor-pointer"
+                    />
+                  </label>
+                  {paymentInsurancePaid && (
+                    <>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        required
+                        placeholder="Monto del seguro"
+                        value={paymentInsuranceAmount}
+                        onChange={(e) => setPaymentInsuranceAmount(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-sm font-mono text-white focus:outline-none focus:border-slate-400"
+                      />
+                      <div className="flex justify-between text-xs text-slate-300">
+                        <span>Total recibido (crédito + seguro)</span>
+                        <span className="font-mono text-white">{formatMoney((Number(paymentAmount) || 0) + (Number(paymentInsuranceAmount) || 0))}</span>
+                      </div>
+                    </>
+                  )}
+                  <p className="text-[11px] text-slate-400">
+                    El seguro no forma parte del crédito: no reduce el capital ni cambia la cuota. Se muestra en el comprobante y en la tabla de amortización.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -3063,10 +3109,6 @@ export const AdminDashboardPage: React.FC = () => {
                       <span className="font-mono">{formatMoney(paymentArrears.overduePrincipalInterest)}</span>
                     </div>
                     <div className="flex justify-between text-slate-300">
-                      <span>Seguro vencido</span>
-                      <span className="font-mono">{formatMoney(paymentArrears.overdueInsurance)}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-300">
                       <span>Mora a hoy</span>
                       <span className="font-mono">{formatMoney(paymentArrears.lateFees)}</span>
                     </div>
@@ -3080,7 +3122,7 @@ export const AdminDashboardPage: React.FC = () => {
                   </div>
                   {nextInstallmentInfo && (
                     <div className="flex justify-between">
-                      <span>Próxima cuota con seguro (#{nextInstallmentInfo.number} · {formatDate(nextInstallmentInfo.dueDate)}):</span>
+                      <span>Próxima cuota (#{nextInstallmentInfo.number} · {formatDate(nextInstallmentInfo.dueDate)}):</span>
                       <span className="font-mono text-white">{formatMoney(nextInstallmentInfo.payment)}</span>
                     </div>
                   )}
@@ -3098,7 +3140,7 @@ export const AdminDashboardPage: React.FC = () => {
                   )}
                   <div className="flex justify-between">
                     <span>Distribución:</span>
-                    <span className="text-emerald-400">Mora → Seguro → Interés → Capital</span>
+                    <span className="text-emerald-400">Mora → Interés → Capital</span>
                   </div>
                 </div>
 

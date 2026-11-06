@@ -86,7 +86,7 @@ export const RestateLoanModal: React.FC<{ loan: any; onClose: () => void; onDone
               <RefreshCcw className="w-3.5 h-3.5" /> Rehacer crédito / condiciones · {loan.code}
             </p>
             <h3 className="text-lg font-bold text-white">{loan.customer?.fullName}</h3>
-            <p className="text-xs text-slate-400">Corrige monto, tasa, plazo, fechas o seguro y regenera el plan de pagos. Siempre se previsualiza antes de aplicar.</p>
+            <p className="text-xs text-slate-400">Corrige monto, tasa, plazo o fechas y regenera el plan de pagos (el seguro se cobra aparte y no entra en el plan). Siempre se previsualiza antes de aplicar.</p>
           </div>
           <button onClick={onClose} aria-label="Cerrar" className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer">
             <X className="w-5 h-5" />
@@ -115,7 +115,7 @@ export const RestateLoanModal: React.FC<{ loan: any; onClose: () => void; onDone
                   ['annualRate', 'Tasa anual %', 'number'],
                   ['termMonths', 'Plazo (meses)', 'number'],
                   ['firstPaymentDate', 'Primera cuota', 'date'],
-                  ['insuranceMonthly', 'Seguro mensual (vacío = sin seguro)', 'number'],
+                  ['insuranceMonthly', 'Seguro mensual sugerido al cobrar (aparte del crédito; vacío = sin seguro)', 'number'],
                 ] as const).map(([k, label, type]) => (
                   <label key={k} className="block">
                     <span className="block font-semibold text-slate-300 mb-1">{label}</span>

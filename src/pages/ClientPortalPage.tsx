@@ -54,6 +54,8 @@ export const ClientPortalPage: React.FC = () => {
   const detail = loanQuery.data;
 
   const installments: any[] = detail?.snapshot?.installments || [];
+  // Seguro: informativo, se paga aparte y no forma parte de la cuota
+  const showInsurance = Number(detail?.loan?.insuranceMonthly ?? 0) > 0 || installments.some((i) => Number(i.insurancePaid ?? 0) > 0);
   const nextInstallment = installments.find((i) => ['PENDING', 'PARTIAL', 'OVERDUE'].includes(i.status));
   // Lo que falta pagar de la próxima cuota, incluida la mora acumulada a hoy
   const { due: nextDue, lateFee: nextLateFee } = nextInstallment
@@ -374,6 +376,7 @@ export const ClientPortalPage: React.FC = () => {
                   <th className="py-3 px-3 text-right">Capital</th>
                   <th className="py-3 px-3 text-right">Intereses</th>
                   <th className="py-3 px-3 text-right font-bold text-white">Cuota</th>
+                  {showInsurance && <th className="py-3 px-3 text-right">Seguro pagado</th>}
                   <th className="py-3 px-3 text-right font-bold text-emerald-400">Saldo Restante</th>
                   <th className="py-3 px-3 text-center">Estado</th>
                 </tr>
@@ -402,6 +405,11 @@ export const ClientPortalPage: React.FC = () => {
                       <td className="py-2.5 px-3 text-right text-emerald-400 font-bold">{formatMoney(row.principal)}</td>
                       <td className="py-2.5 px-3 text-right text-slate-400">{formatMoney(row.interest)}</td>
                       <td className="py-2.5 px-3 text-right font-bold text-white">{formatMoney(row.payment)}</td>
+                      {showInsurance && (
+                        <td className="py-2.5 px-3 text-right text-slate-400">
+                          {Number(row.insurancePaid ?? 0) > 0 ? formatMoney(row.insurancePaid) : '-'}
+                        </td>
+                      )}
                       <td className="py-2.5 px-3 text-right font-bold text-slate-100">{formatMoney(row.closingBalance)}</td>
                       <td className="py-2.5 px-3 text-center font-sans">
                         {isPaid ? (
@@ -458,7 +466,12 @@ export const ClientPortalPage: React.FC = () => {
                         <span className="text-slate-400 text-[11px]">{formatDate(p.effectiveDate)}</span>
                       </td>
                       <td className="py-3.5 px-4 text-slate-300 font-sans">{PAYMENT_METHOD_LABELS[p.paymentMethod] || p.paymentMethod}</td>
-                      <td className="py-3.5 px-4 text-right font-bold text-white">{formatMoney(p.amountReceived)}</td>
+                      <td className="py-3.5 px-4 text-right font-bold text-white">
+                        {formatMoney(p.amountReceived)}
+                        {Number(p.insuranceAmount ?? 0) > 0 && (
+                          <span className="block text-[11px] font-normal text-slate-400">+ seguro {formatMoney(p.insuranceAmount)}</span>
+                        )}
+                      </td>
                       <td className="py-3.5 px-4 text-right text-emerald-400 font-bold">{formatMoney(p.principal)}</td>
                       <td className="py-3.5 px-4 text-right text-slate-400">{formatMoney(p.interest)}</td>
                       <td className="py-3.5 px-4 text-right font-bold text-white">{formatMoney(p.resultingBalance)}</td>
